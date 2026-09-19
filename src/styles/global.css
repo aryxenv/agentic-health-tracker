@@ -93,3 +93,9 @@ html, body {
   width: 0px !important;
   height: 0px !important;
 }
+
+/* Auto-expanding textarea via CSS field-sizing */
+textarea.auto-expand {
+  field-sizing: content;
+}
+

@@ -41,6 +41,16 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   const messagesFeedRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Fallback auto-resize for browsers not yet supporting CSS field-sizing
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (el && typeof CSS !== "undefined" && !CSS.supports?.("field-sizing", "content")) {
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    }
+  }, [input]);
 
   // Abort any ongoing stream on unmount
   useEffect(() => {
@@ -48,6 +58,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
       abortControllerRef.current?.abort();
     };
   }, []);
+
 
 
   const scrollToBottom = () => {
@@ -104,6 +115,24 @@ export const ChatTab: React.FC<ChatTabProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter") {
+      // Desktop detection: physical mouse/trackpad fine pointer
+      const isDesktop =
+        typeof window !== "undefined" &&
+        window.matchMedia("(pointer: fine)").matches;
+
+      if (isDesktop) {
+        if (!e.shiftKey) {
+          e.preventDefault();
+          handleSend();
+        }
+        // If Shift+Enter, allow default newline insertion
+      }
+      // On mobile devices, Enter key creates a newline; user taps Send button to submit
+    }
+  };
+
   const handleSend = async (customText?: string) => {
     const textToSend = (customText !== undefined ? customText : input).trim();
     if (!textToSend || loading) return;
@@ -117,9 +146,15 @@ export const ChatTab: React.FC<ChatTabProps> = ({
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    if (!customText) setInput("");
+    if (!customText) {
+      setInput("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+    }
     setLoading(true);
     setLiveSteps([]);
+
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -338,21 +373,24 @@ export const ChatTab: React.FC<ChatTabProps> = ({
       {/* Input area */}
       <div className="shrink-0 pt-3">
 
-        {/* Text Input */}
+        {/* Text Area Input */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSend();
           }}
-          className="relative flex items-center border border-[rgba(255,255,255,0.5)] hover:border-white focus-within:border-white rounded-panel transition-colors duration-300 bg-transparent"
+          className="relative flex items-end border border-[rgba(255,255,255,0.5)] hover:border-white focus-within:border-white rounded-panel transition-colors duration-300 bg-transparent"
         >
-          <input
-            type="text"
+          <textarea
+            ref={textareaRef}
+            rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Log food or exercise (e.g. '1 bowl oatmeal' or '30m walk')..."
             disabled={loading}
-            className="w-full bg-transparent pl-3 pr-10 py-2.5 text-[0.95rem] text-white placeholder-white/30 focus:outline-none"
+            style={{ fieldSizing: "content" } as React.CSSProperties}
+            className="auto-expand w-full bg-transparent pl-3 pr-10 py-2.5 text-[0.95rem] text-white placeholder-white/30 focus:outline-none resize-none min-h-[44px] max-h-[160px] overflow-y-auto leading-[1.5] block no-scrollbar"
           />
           {loading ? (
             <button
@@ -360,7 +398,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
               onClick={handleStop}
               aria-label="Stop response"
               title="Stop response"
-              className="absolute right-2 p-1.5 text-white opacity-80 hover:opacity-100 transition-opacity duration-300 flex items-center justify-center cursor-pointer"
+              className="absolute right-2 bottom-2.5 p-1.5 text-white opacity-80 hover:opacity-100 transition-opacity duration-300 flex items-center justify-center cursor-pointer"
             >
               <Square className="w-3.5 h-3.5 fill-current text-white" />
             </button>
@@ -369,7 +407,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
               type="submit"
               disabled={!input.trim()}
               aria-label="Send telemetry"
-              className="absolute right-2 p-1.5 text-white opacity-50 hover:opacity-100 disabled:opacity-20 transition-opacity duration-300 cursor-pointer"
+              className="absolute right-2 bottom-2.5 p-1.5 text-white opacity-50 hover:opacity-100 disabled:opacity-20 transition-opacity duration-300 cursor-pointer"
             >
               <Send className="w-4 h-4" />
             </button>
