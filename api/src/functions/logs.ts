@@ -1,5 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { tableService } from '../services/tableService';
+import { cosmosService } from '../services/cosmosService';
 import { DraftEntry } from '../types/apiTypes';
 import * as dotenv from 'dotenv';
 
@@ -21,17 +21,18 @@ export async function logPostHandler(
     }
 
     const rawInput = body.rawInput || '';
+    const userId = body.userId || 'default_user';
 
     // Support both single draft item and batch array of entries
     if (Array.isArray(body.entries)) {
-      const records = await tableService.insertBatch(body.entries as DraftEntry[], rawInput);
+      const records = await cosmosService.insertBatch(body.entries as DraftEntry[], rawInput, userId);
       return {
         status: 201,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ success: true, records, count: records.length })
       };
     } else if (body.name && body.type) {
-      const record = await tableService.insertEntry(body as DraftEntry, rawInput);
+      const record = await cosmosService.insertEntry(body as DraftEntry, rawInput, userId);
       return {
         status: 201,
         headers: { 'Content-Type': 'application/json' },
@@ -45,7 +46,7 @@ export async function logPostHandler(
       };
     }
   } catch (error: any) {
-    context.error('Error inserting log:', error);
+    context.error('Error inserting log into Cosmos DB:', error);
     return {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -61,8 +62,9 @@ export async function logsGetHandler(
   try {
     const startDate = request.query.get('startDate') || undefined;
     const endDate = request.query.get('endDate') || undefined;
+    const userId = request.query.get('userId') || 'default_user';
 
-    const logs = await tableService.getLogs(startDate, endDate);
+    const logs = await cosmosService.getLogs(startDate, endDate, userId);
 
     return {
       status: 200,
@@ -70,7 +72,7 @@ export async function logsGetHandler(
       body: JSON.stringify({ success: true, logs, count: logs.length })
     };
   } catch (error: any) {
-    context.error('Error fetching logs:', error);
+    context.error('Error fetching logs from Cosmos DB:', error);
     return {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -84,18 +86,18 @@ export async function logDeleteHandler(
   context: InvocationContext
 ): Promise<HttpResponseInit> {
   try {
-    const partitionKey = request.query.get('partitionKey') || 'log';
-    const rowKey = request.query.get('rowKey');
+    const partitionKey = request.query.get('partitionKey') || request.query.get('userId') || 'default_user';
+    const rowKey = request.query.get('rowKey') || request.query.get('id');
 
     if (!rowKey) {
       return {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'rowKey query parameter is required for deletion' })
+        body: JSON.stringify({ error: 'rowKey or id query parameter is required for deletion' })
       };
     }
 
-    const success = await tableService.deleteLog(partitionKey, rowKey);
+    const success = await cosmosService.deleteLog(rowKey, partitionKey);
 
     return {
       status: 200,
@@ -103,11 +105,65 @@ export async function logDeleteHandler(
       body: JSON.stringify({ success, rowKey })
     };
   } catch (error: any) {
-    context.error('Error deleting log:', error);
+    context.error('Error deleting log from Cosmos DB:', error);
     return {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: error.message || 'Failed to delete log entry' })
+    };
+  }
+}
+
+export async function profileGetHandler(
+  request: HttpRequest,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
+  try {
+    const userId = request.query.get('userId') || 'default_user';
+    const profile = await cosmosService.getProfile(userId);
+
+    return {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: true, profile })
+    };
+  } catch (error: any) {
+    context.error('Error fetching profile from Cosmos DB:', error);
+    return {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: error.message || 'Failed to retrieve profile' })
+    };
+  }
+}
+
+export async function profilePostHandler(
+  request: HttpRequest,
+  context: InvocationContext
+): Promise<HttpResponseInit> {
+  try {
+    const body = (await request.json()) as any;
+    if (!body) {
+      return {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'Missing request body' })
+      };
+    }
+    const userId = body.userId || 'default_user';
+    const profile = await cosmosService.upsertProfile(body, userId);
+
+    return {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ success: true, profile })
+    };
+  } catch (error: any) {
+    context.error('Error saving profile to Cosmos DB:', error);
+    return {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: error.message || 'Failed to save profile' })
     };
   }
 }
@@ -134,6 +190,20 @@ app.http('logs_delete', {
   handler: logDeleteHandler
 });
 
+app.http('profile_get', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'profile',
+  handler: profileGetHandler
+});
+
+app.http('profile_post', {
+  methods: ['POST', 'PUT'],
+  authLevel: 'anonymous',
+  route: 'profile',
+  handler: profilePostHandler
+});
+
 export async function healthHandler(
   request: HttpRequest,
   context: InvocationContext
@@ -151,4 +221,3 @@ app.http('health_get', {
   route: 'health',
   handler: healthHandler
 });
-

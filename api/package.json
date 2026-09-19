@@ -10,7 +10,7 @@
     "start": "func start"
   },
   "dependencies": {
-    "@azure/data-tables": "^13.3.0",
+    "@azure/cosmos": "^4.10.1",
     "@azure/functions": "^4.6.0",
     "@azure/identity": "^4.7.0",
     "@microsoft/agent-framework": "npm:@polymind-inc/agent-framework@^0.4.0",

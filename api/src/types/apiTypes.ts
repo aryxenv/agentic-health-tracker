@@ -38,6 +38,60 @@ export interface HealthLogRecord extends DraftEntry {
   timestamp: string;
 }
 
+export interface CosmosHealthDoc extends HealthLogRecord {
+  id: string;
+  userId: string;
+  docType: 'log' | 'profile';
+  date: string;
+  food?: {
+    mealType: MealType;
+    servingInfo: string;
+    nutrients: {
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      fiber: number;
+      sugar: number;
+      sodiumMg: number;
+    };
+  };
+  activity?: {
+    durationMin: number;
+    metValue: number;
+    activeCalories: number;
+    modality: ActivityModality;
+    intensity: ActivityIntensity;
+    details: string;
+  };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UserProfileDoc {
+  id: string;
+  userId: string;
+  docType: 'profile';
+  age: number;
+  sex: 'male' | 'female';
+  weightKg: number;
+  heightCm: number;
+  activityLevel: string;
+  strategy: string;
+  targets: {
+    bmr: number;
+    tdee: number;
+    targetCalories: number;
+    targetProtein: number;
+    targetCarbs: number;
+    targetFat: number;
+    sugarCeiling: number;
+    sodiumCeilingMg: number;
+  };
+  updatedAt: string;
+}
+
+
 export interface GroqChatResponse {
   reply: string;
   needs_clarification: boolean;
