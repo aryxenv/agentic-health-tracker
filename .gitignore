@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+api/node_modules/
+
+# Production builds
+dist/
+api/dist/
+.astro/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS and Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+local.settings.json
+

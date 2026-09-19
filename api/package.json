@@ -1,0 +1,24 @@
+{
+  "name": "health-tracker-api",
+  "version": "1.0.0",
+  "description": "Azure Functions v4 backend for Health & Activity Tracker",
+  "main": "dist/src/functions/*.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "prestart": "npm run build",
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/data-tables": "^13.3.0",
+    "@azure/functions": "^4.6.0",
+    "@azure/identity": "^4.7.0",
+    "@microsoft/agent-framework": "npm:@polymind-inc/agent-framework@^0.4.0",
+    "dotenv": "^16.4.7",
+    "groq-sdk": "^0.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.3"
+  }
+}
