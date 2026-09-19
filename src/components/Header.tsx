@@ -8,13 +8,15 @@ interface HeaderProps {
   isServerOnline?: boolean;
   onOpenProfile: () => void;
   onNewChat?: () => void;
+  hasMessages?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   aggregations,
   targets,
   onOpenProfile,
-  onNewChat
+  onNewChat,
+  hasMessages = false
 }) => {
   const { totalIntakeCalories, totalActiveCaloriesBurned, netCalories } = aggregations;
 
@@ -34,19 +36,21 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: New Chat Button, In/Burn Readout & Profile Button (All uniform h-[34px]) */}
         <div className="flex items-center space-x-2">
-          {/* + New Chat Button - Exactly h-[34px] */}
-          <button
-            type="button"
-            onClick={onNewChat}
-            title="Start new chat session"
-            aria-label="New Chat"
-            className="h-[34px] px-3 rounded-[5px] border border-[rgba(255,255,255,0.35)] hover:border-white bg-transparent text-white opacity-60 hover:opacity-100 transition-all duration-300 inline-flex items-center space-x-1.5 cursor-pointer select-none"
-          >
-            <Plus className="w-[14px] h-[14px]" />
-            <span className="text-[0.76rem] tracking-wider uppercase font-medium whitespace-nowrap leading-none">
-              New Chat
-            </span>
-          </button>
+          {/* + New Chat Button - Only visible when an active conversation exists */}
+          {hasMessages && onNewChat && (
+            <button
+              type="button"
+              onClick={onNewChat}
+              title="Start new chat session"
+              aria-label="New Chat"
+              className="h-[34px] px-3 rounded-[5px] border border-[rgba(255,255,255,0.35)] hover:border-white bg-transparent text-white opacity-60 hover:opacity-100 transition-all duration-300 inline-flex items-center space-x-1.5 cursor-pointer select-none"
+            >
+              <Plus className="w-[14px] h-[14px]" />
+              <span className="text-[0.76rem] tracking-wider uppercase font-medium whitespace-nowrap leading-none">
+                New Chat
+              </span>
+            </button>
+          )}
 
           {/* Quick Intake/Burn Readout - Exactly h-[34px] */}
           <div className="hidden sm:inline-flex h-[34px] items-center space-x-2.5 text-[0.76rem] px-3 rounded-[5px] border border-[rgba(255,255,255,0.35)] bg-transparent text-white/70 whitespace-nowrap leading-none">

@@ -12,11 +12,13 @@ import { DraftCard } from "./DraftCard";
 interface ChatTabProps {
   userProfile: UserProfile;
   onEntrySaved: () => void;
+  onHasMessagesChange?: (hasMessages: boolean) => void;
 }
 
 export const ChatTab: React.FC<ChatTabProps> = ({
   userProfile,
   onEntrySaved,
+  onHasMessagesChange,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -26,9 +28,14 @@ export const ChatTab: React.FC<ChatTabProps> = ({
       timestamp: new Date().toISOString(),
     },
   ]);
+
+  useEffect(() => {
+    const hasUserSentMessage = messages.some((m) => m.sender === "user");
+    onHasMessagesChange?.(hasUserSentMessage);
+  }, [messages, onHasMessagesChange]);
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showEstimateChip, setShowEstimateChip] = useState(false);
   const [liveSteps, setLiveSteps] = useState<AgenticStep[]>([]);
   const [expandedStepMsgIds, setExpandedStepMsgIds] = useState<Set<string>>(
     new Set(),
@@ -114,7 +121,6 @@ export const ChatTab: React.FC<ChatTabProps> = ({
     setMessages((prev) => [...prev, userMessage]);
     if (!customText) setInput("");
     setLoading(true);
-    setShowEstimateChip(false);
     setLiveSteps([]);
 
     const controller = new AbortController();
@@ -151,10 +157,6 @@ export const ChatTab: React.FC<ChatTabProps> = ({
       };
 
       setMessages((prev) => [...prev, healthAgentMessage]);
-
-      if (res.needs_clarification) {
-        setShowEstimateChip(true);
-      }
     } catch (err: any) {
       if (err.name === "AbortError" || err.message?.toLowerCase().includes("abort")) {
         setMessages((prev) => [
@@ -252,8 +254,8 @@ export const ChatTab: React.FC<ChatTabProps> = ({
                         <ChevronRight className="w-3 h-3 text-white/70" />
                       )}
                       <span className="tracking-wide">
-                        {msg.agenticSteps!.length} Agentic Step
-                        {msg.agenticSteps!.length > 1 ? "s" : ""} (MAF Loop)
+                        {msg.agenticSteps!.length}{" "}
+                        {msg.agenticSteps!.length === 1 ? "Step" : "Steps"}
                       </span>
                     </button>
 
@@ -335,22 +337,8 @@ export const ChatTab: React.FC<ChatTabProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area & Quick Chips */}
+      {/* Input area */}
       <div className="shrink-0 pt-3">
-        {/* Clarification "Estimate" chip (Two-State Rule: 50% -> 100%) */}
-        {showEstimateChip && !loading && (
-          <div className="flex items-center space-x-2 mb-2">
-            <button
-              onClick={() => handleSend("estimate")}
-              className="flex items-center space-x-1.5 px-3 py-1 rounded-panel border border-[rgba(255,255,255,0.5)] hover:border-white text-white text-[0.855rem] bg-transparent opacity-50 hover:opacity-100 transition-opacity duration-300"
-            >
-              <span>Apply adult standard estimate</span>
-            </button>
-            <span className="text-[0.76rem] text-white/40">
-              or enter portion / duration below
-            </span>
-          </div>
-        )}
 
         {/* Text Input */}
         <form

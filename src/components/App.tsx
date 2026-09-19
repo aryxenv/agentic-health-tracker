@@ -75,6 +75,7 @@ export const App: React.FC = () => {
   }, [refreshTodayData, pingServer]);
 
   const [chatKey, setChatKey] = useState<number>(0);
+  const [hasUserMessages, setHasUserMessages] = useState<boolean>(false);
 
   const handleSaveProfile = (newProfile: UserProfile) => {
     saveUserProfile(newProfile);
@@ -83,6 +84,7 @@ export const App: React.FC = () => {
 
   const handleNewChat = useCallback(() => {
     setChatKey((k) => k + 1);
+    setHasUserMessages(false);
     setActiveTab('chat');
   }, []);
 
@@ -95,6 +97,7 @@ export const App: React.FC = () => {
         isServerOnline={isServerOnline}
         onOpenProfile={() => setIsProfileOpen(true)}
         onNewChat={handleNewChat}
+        hasMessages={hasUserMessages}
       />
 
       {/* Main Viewport Plane */}
@@ -103,19 +106,21 @@ export const App: React.FC = () => {
           activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto'
         }`}
       >
-        {activeTab === 'chat' ? (
+        <div className={`h-full flex-1 min-h-0 flex flex-col ${activeTab === 'chat' ? '' : 'hidden'}`}>
           <ChatTab
             key={chatKey}
             userProfile={profile}
             onEntrySaved={refreshTodayData}
+            onHasMessagesChange={setHasUserMessages}
           />
-        ) : (
+        </div>
+        <div className={`h-full flex-1 min-h-0 flex flex-col ${activeTab === 'data' ? '' : 'hidden'}`}>
           <DashboardTab
             userProfile={profile}
             macroTargets={macroTargets}
             onDataChanged={refreshTodayData}
           />
-        )}
+        </div>
       </main>
 
       {/* Bottom Cockpit Nav */}

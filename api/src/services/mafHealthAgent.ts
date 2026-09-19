@@ -641,10 +641,18 @@ SCIENTIFIC CORE RULES:
    - Net Active Calories = (MET - 1) * weight_kg * (duration_minutes / 60).
    - Use user's profile weight (${userProfile?.weightKg || 70}kg).
 3. Ambiguity & Clarification Protocol:
-   - If user input lacks critical details (e.g. food without portion size or exercise without duration):
-     * Call record_health_log with needs_clarification: true, draft_entries: [], and clarification_prompt explaining what is missing (and informing user they can tap "Estimate" or reply).
-   - If input is clear OR if user says "estimate":
-     * Call record_health_log with needs_clarification: false, clarification_prompt: null, and the calculated draft_entries.
+   - When user input lacks necessary details, determine if the missing detail is ESTIMABLE or IMPORTANT/CRITICAL:
+     * ESTIMABLE / NON-CRITICAL (e.g. food portion size when the food item is known, like chicken breast, rice, oatmeal, or typical walking pace):
+       - Call record_health_log with needs_clarification: true, draft_entries: [], and clarification_prompt summarizing the missing detail.
+       - In your reply message, ask 1 concise clarifying question about the missing detail, AND explicitly inform the user: "If you're not sure, you can simply reply with 'estimate' and I will calculate based on standard average adult portions."
+     * IMPORTANT / CRITICAL (e.g. completely unknown food name, workout with no duration specified where guessing could be wildly inaccurate, or medical/safety ambiguity):
+       - Call record_health_log with needs_clarification: true, draft_entries: [], and clarification_prompt summarizing the missing detail.
+       - In your reply message, ask directly for the specific required information.
+       - DO NOT offer an estimation option in the output when the missing detail is critical.
+   - When user input is clear OR if the user replies "estimate":
+     - Set needs_clarification: false, clarification_prompt: null.
+     - Calculate telemetry using USDA FoodData Central densities or 2024 Adult Compendium MET values (applying standard adult portions/averages if "estimate" was requested).
+     - Call record_health_log with the calculated draft_entries and an encouraging scientific summary reply.
 4. MULTI-TURN CONVERSATION AWARENESS:
    - Carefully interpret conversational context from prior turns.
    - If the user modifies, corrects, or appends items (e.g. "actually make that 3 eggs", "add 1 banana", "change to 45 mins"):
@@ -695,10 +703,6 @@ export async function runHealthAgentStream(
 ): Promise<GroqChatResponse> {
   const { healthAgent, emit, agentRunState, sanitizeDraftEntries } = createHealthAgentSystem(userProfile, onStep);
 
-  emit('thought', 'Health Agent initializing agentic deliberation loop...', {
-    thought: 'Analyzing user input and historical context across nutrition and activity domains.'
-  });
-
   // Extract latest user query and previous messages
   const userMessages = messages.filter((m) => m.role === 'user');
   const latestMessage = userMessages[userMessages.length - 1]?.content || 'Hello';
@@ -733,28 +737,28 @@ CONTEXT INSTRUCTIONS:
   try {
     const runStream = healthAgent.run(fullPrompt);
 
-    // Consume stream updates to capture thoughts and step progress
+    let hasEmittedReasoningThought = false;
+    let reasoningBuffer = '';
+
+    // Consume stream updates to capture thoughts and step progress without single-token duds
     for await (const update of runStream) {
       if (update.contents && Array.isArray(update.contents)) {
         for (const content of update.contents) {
           if (content.type === 'text_reasoning' && (content as any).text) {
-            const thoughtText = (content as any).text.trim();
-            if (thoughtText.length > 5) {
-              emit('thought', 'Reasoning...', {
-                thought: thoughtText
+            reasoningBuffer += (content as any).text;
+            if (!hasEmittedReasoningThought && reasoningBuffer.trim().length > 15) {
+              emit('thought', 'Deliberating health telemetry & domain context', {
+                thought: 'Evaluating input against USDA densities and Adult Compendium MET standards.'
               });
+              hasEmittedReasoningThought = true;
             }
           } else if (content.type === 'function_call') {
             const fc = content as any;
-            emit('tool_call', `Health Agent invoking tool: ${fc.name}`, {
-              toolName: fc.name,
-              args: typeof fc.arguments === 'string' ? JSON.parse(fc.arguments || '{}') : fc.arguments
-            });
-          } else if (content.type === 'function_result') {
-            const fr = content as any;
-            emit('tool_result', `Tool completed execution (${fr.callId || 'ok'})`, {
-              result: fr.result
-            });
+            if (fc.name === 'consult_nutrition_specialist') {
+              emit('tool_call', 'Consulting Nutrition Specialist subagent', { toolName: fc.name });
+            } else if (fc.name === 'consult_activity_specialist') {
+              emit('tool_call', 'Consulting Physical Activity Specialist subagent', { toolName: fc.name });
+            }
           }
         }
       }
@@ -796,9 +800,11 @@ CONTEXT INSTRUCTIONS:
       }
     }
 
-    emit('thought', 'Health Agent completed agentic run.', {
-      thought: `Generated ${result.draft_entries?.length || 0} telemetry items. Clarification needed: ${result.needs_clarification}`
-    });
+    if (result.draft_entries && result.draft_entries.length > 0) {
+      emit('thought', 'Health Agent completed deliberation.', {
+        thought: `Generated ${result.draft_entries.length} telemetry item${result.draft_entries.length > 1 ? 's' : ''}.`
+      });
+    }
 
     return result;
   } catch (err: any) {
