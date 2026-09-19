@@ -20,39 +20,47 @@ export class HealthCosmosService {
   private containerId: string;
   private endpoint: string;
 
+  private initClient(): CosmosClient {
+    const cosmosKey = process.env.COSMOS_KEY;
+    if (cosmosKey) {
+      return new CosmosClient({
+        endpoint: this.endpoint,
+        key: cosmosKey
+      });
+    }
+    // Keyless Managed Identity / Azure CLI credential fallback
+    const credential = new DefaultAzureCredential();
+    return new CosmosClient({
+      endpoint: this.endpoint,
+      aadCredentials: credential
+    });
+  }
+
   constructor() {
     this.endpoint = process.env.COSMOS_ENDPOINT || 'https://cdb-portfolio.documents.azure.com:443/';
     this.databaseId = process.env.COSMOS_DATABASE_ID || DEFAULT_DATABASE_ID;
     this.containerId = process.env.COSMOS_CONTAINER_ID || DEFAULT_CONTAINER_ID;
 
     try {
-      // Keyless managed identity authentication using DefaultAzureCredential
-      const credential = new DefaultAzureCredential();
-      this.client = new CosmosClient({
-        endpoint: this.endpoint,
-        aadCredentials: credential
-      });
+      this.client = this.initClient();
       this.database = this.client.database(this.databaseId);
       this.container = this.database.container(this.containerId);
     } catch (err: any) {
-      console.error('Failed to initialize CosmosClient with DefaultAzureCredential:', err.message);
+      console.error('Failed to initialize CosmosClient:', err.message);
     }
   }
 
   private getContainer(): Container {
     if (!this.container) {
       if (!this.client) {
-        const credential = new DefaultAzureCredential();
-        this.client = new CosmosClient({
-          endpoint: this.endpoint,
-          aadCredentials: credential
-        });
+        this.client = this.initClient();
       }
       this.database = this.client.database(this.databaseId);
       this.container = this.database.container(this.containerId);
     }
     return this.container;
   }
+
 
   async insertEntry(
     entry: DraftEntry,
