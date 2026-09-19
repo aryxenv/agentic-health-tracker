@@ -11,11 +11,7 @@
     "astro": "astro"
   },
   "dependencies": {
-    "@astrojs/compiler-binding-win32-x64-msvc": "^0.4.1",
     "@astrojs/react": "^6.0.6",
-    "@bruits/satteri-win32-x64-msvc": "^0.10.5",
-    "@rolldown/binding-win32-x64-msvc": "^1.2.9",
-    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.3",
     "@tailwindcss/vite": "^4.0.9",
     "astro": "^7.3.3",
     "date-fns": "^4.1.0",
