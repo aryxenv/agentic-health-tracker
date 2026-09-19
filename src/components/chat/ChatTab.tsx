@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Loader2, Send, Square } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { saveLogEntries, sendChatMessageStream } from "../../services/api";
+import { getStoredChatMessages, saveStoredChatMessages } from "../../services/storage";
 import type {
   AgenticStep,
   ChatMessage,
@@ -20,14 +21,11 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   onEntrySaved,
   onHasMessagesChange,
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      sender: "health_agent",
-      text: "Health Agent initialized. Enter food consumption or physical activity data (e.g., '200g chicken breast and rice' or '30 min brisk walk').",
-      timestamp: new Date().toISOString(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => getStoredChatMessages());
+
+  useEffect(() => {
+    saveStoredChatMessages(messages);
+  }, [messages]);
 
   useEffect(() => {
     const hasUserSentMessage = messages.some((m) => m.sender === "user");

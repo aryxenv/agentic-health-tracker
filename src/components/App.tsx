@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { UserProfile, DailyAggregations, MacroTargets } from '../types/health';
-import { getUserProfile, saveUserProfile } from '../services/storage';
+import { getUserProfile, saveUserProfile, clearStoredChatMessages } from '../services/storage';
 import { calculateMacroTargets, aggregateLogs } from '../services/calculations';
 import { fetchLogs, checkServerHealth } from '../services/api';
 import { Header } from './Header';
@@ -83,6 +83,7 @@ export const App: React.FC = () => {
   };
 
   const handleNewChat = useCallback(() => {
+    clearStoredChatMessages();
     setChatKey((k) => k + 1);
     setHasUserMessages(false);
     setActiveTab('chat');
