@@ -103,3 +103,15 @@ Set up Azure Cosmos DB for NoSQL for this project using my active Azure CLI logi
 | COSMOS_CONTAINER_ID | <YOUR_COSMOS_CONTAINER_ID> |
 
 12. that's it, you should now be able to go on the swa public url and use the app.
+
+## bonus
+
+if you want to turn this into an app on your phone, you can (if you have chrome on your phone)
+
+1. open the url in chrome on your phone
+
+2. click on the 3 dots on the top right corner, and select "Install and create shortcut", and select the option "Install"
+
+![install app on chrome](./install_app_on_chrome.png)
+
+3. now you can access the app from your home screen like a normal app, and it will open in full screen without the browser stuff.
