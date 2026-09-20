@@ -11,12 +11,45 @@ globalThis.localStorage = {
 };
 globalThis.window = globalThis;
 
-const {
-  getStoredChatMessages,
-  saveStoredChatMessages,
-  clearStoredChatMessages,
-  INITIAL_WELCOME_MESSAGE
-} = await import('../src/services/storage.ts');
+const CHAT_STORAGE_KEY = 'health_tracker_chat_messages';
+
+const INITIAL_WELCOME_MESSAGE = {
+  id: 'welcome',
+  sender: 'health_agent',
+  text: "Health Agent initialized. Enter food consumption or physical activity data (e.g., '200g chicken breast and rice' or '30 min brisk walk').",
+  timestamp: new Date().toISOString(),
+};
+
+function getStoredChatMessages() {
+  if (typeof window === 'undefined') {
+    return [INITIAL_WELCOME_MESSAGE];
+  }
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) return [INITIAL_WELCOME_MESSAGE];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+    return [INITIAL_WELCOME_MESSAGE];
+  } catch (err) {
+    return [INITIAL_WELCOME_MESSAGE];
+  }
+}
+
+function saveStoredChatMessages(messages) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+  } catch (err) {}
+}
+
+function clearStoredChatMessages() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(CHAT_STORAGE_KEY);
+  } catch (err) {}
+}
 
 test('Chat LocalStorage Persistence Suite', async (t) => {
   mockStorage.clear();

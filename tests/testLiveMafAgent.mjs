@@ -18,6 +18,18 @@ if (!process.env.GROQ_API_KEY) {
       }
     }
   } catch (_) {}
+
+  if (!process.env.GROQ_API_KEY) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../api/local.settings.json'), 'utf-8'));
+      if (settings.Values?.GROQ_API_KEY) {
+        process.env.GROQ_API_KEY = settings.Values.GROQ_API_KEY;
+      }
+      if (settings.Values?.GROQ_MODEL) {
+        process.env.GROQ_MODEL = settings.Values.GROQ_MODEL;
+      }
+    } catch (_) {}
+  }
 }
 
 // Import compiled MAF health agent

@@ -9,6 +9,7 @@ import type {
   UserProfile,
 } from "../../types/health";
 import { DraftCard } from "./DraftCard";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ChatTabProps {
   userProfile: UserProfile;
@@ -34,6 +35,8 @@ export const ChatTab: React.FC<ChatTabProps> = ({
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
+  const streamingTextRef = useRef("");
   const [liveSteps, setLiveSteps] = useState<AgenticStep[]>([]);
   const [expandedStepMsgIds, setExpandedStepMsgIds] = useState<Set<string>>(
     new Set(),
@@ -67,7 +70,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, loading, liveSteps]);
+  }, [messages, loading, liveSteps, streamingText]);
 
   // Enable scrolling anywhere in the viewport (including outside margins on desktop)
   useEffect(() => {
@@ -154,7 +157,8 @@ export const ChatTab: React.FC<ChatTabProps> = ({
     }
     setLoading(true);
     setLiveSteps([]);
-
+    setStreamingText("");
+    streamingTextRef.current = "";
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -171,14 +175,19 @@ export const ChatTab: React.FC<ChatTabProps> = ({
         (step) => {
           setLiveSteps((prev) => [...prev, step]);
         },
+        (delta) => {
+          streamingTextRef.current += delta;
+          setStreamingText((prev) => prev + delta);
+        },
         controller.signal,
       );
 
       const agentMsgId = `agent_${Date.now()}`;
+      const finalText = res.reply || streamingTextRef.current;
       const healthAgentMessage: ChatMessage = {
         id: agentMsgId,
         sender: "health_agent",
-        text: res.reply,
+        text: finalText,
         timestamp: new Date().toISOString(),
         needsClarification: res.needs_clarification,
         draftEntries:
@@ -192,12 +201,13 @@ export const ChatTab: React.FC<ChatTabProps> = ({
       setMessages((prev) => [...prev, healthAgentMessage]);
     } catch (err: any) {
       if (err.name === "AbortError" || err.message?.toLowerCase().includes("abort")) {
+        const partial = streamingTextRef.current.trim();
         setMessages((prev) => [
           ...prev,
           {
             id: `aborted_${Date.now()}`,
             sender: "health_agent",
-            text: "Response stopped by user.",
+            text: partial ? `${partial} [Stopped]` : "Response stopped by user.",
             timestamp: new Date().toISOString(),
             agenticSteps: liveSteps.length > 0 ? liveSteps : undefined,
           },
@@ -218,6 +228,8 @@ export const ChatTab: React.FC<ChatTabProps> = ({
       abortControllerRef.current = null;
       setLoading(false);
       setLiveSteps([]);
+      setStreamingText("");
+      streamingTextRef.current = "";
     }
   };
 
@@ -271,7 +283,11 @@ export const ChatTab: React.FC<ChatTabProps> = ({
                     </span>
                   </div>
                 )}
-                <div className="whitespace-pre-wrap">{msg.text}</div>
+                {isUser ? (
+                  <div className="whitespace-pre-wrap">{msg.text}</div>
+                ) : (
+                  <MarkdownRenderer content={msg.text} />
+                )}
 
                 {/* Inspectable Agentic Deliberation Steps */}
                 {hasSteps && (
@@ -337,33 +353,52 @@ export const ChatTab: React.FC<ChatTabProps> = ({
 
         {/* Real-time Agentic Loop Live Telemetry Stream */}
         {loading && (
-          <div className="max-w-[90%] sm:max-w-[85%] rounded-panel p-3 text-[0.855rem] border border-quarter-light bg-transparent space-y-2">
-            <div className="flex items-center space-x-2 text-white/70">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-              <span className="tracking-wide">
-                {liveSteps.length > 0
-                  ? liveSteps[liveSteps.length - 1].title
-                  : "Health Agent deliberating with tools & specialists..."}
-              </span>
-            </div>
-            {liveSteps.length > 0 && (
-              <div className="pl-4 space-y-1 text-[0.76rem] text-white/50 border-l border-[rgba(255,255,255,0.15)] mt-1.5">
-                {liveSteps.slice(-3).map((st) => (
-                  <div key={st.id} className="flex items-center space-x-1.5">
-                    <span className="text-white/30 uppercase text-[0.68rem]">
-                      [
-                      {st.type === "tool_call"
-                        ? "Tool"
-                        : st.type === "tool_result"
-                          ? "Result"
-                          : "Thought"}
-                      ]
-                    </span>
-                    <span className="text-white/70 truncate">{st.title}</span>
-                  </div>
-                ))}
+          <div className="flex flex-col items-start w-full">
+            <div className="max-w-[90%] sm:max-w-[85%] rounded-panel p-3 text-[0.95rem] leading-[1.6] border border-quarter-light bg-transparent space-y-2">
+              <div className="text-[0.76rem] text-white/50">
+                <span className="uppercase tracking-wider">
+                  HEALTH AGENT
+                </span>
               </div>
-            )}
+
+              {/* Streaming Output */}
+              {streamingText ? (
+                <div>
+                  <MarkdownRenderer content={streamingText} />
+                  <span className="inline-block w-1.5 h-3.5 bg-white/70 ml-1 animate-pulse align-middle" />
+                </div>
+              ) : null}
+
+              {/* Real-time Agentic Loop Steps Telemetry */}
+              <div className={streamingText ? "pt-2 border-t border-[rgba(255,255,255,0.15)]" : ""}>
+                <div className="flex items-center space-x-2 text-[0.76rem] text-white/70">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span className="tracking-wide">
+                    {liveSteps.length > 0
+                      ? liveSteps[liveSteps.length - 1].title
+                      : "Health Agent deliberating with tools & specialists..."}
+                  </span>
+                </div>
+                {liveSteps.length > 0 && (
+                  <div className="pl-4 space-y-1 text-[0.76rem] text-white/50 border-l border-[rgba(255,255,255,0.15)] mt-1.5">
+                    {liveSteps.slice(-3).map((st) => (
+                      <div key={st.id} className="flex items-center space-x-1.5">
+                        <span className="text-white/30 uppercase text-[0.68rem]">
+                          [
+                          {st.type === "tool_call"
+                            ? "Tool"
+                            : st.type === "tool_result"
+                              ? "Result"
+                              : "Thought"}
+                          ]
+                        </span>
+                        <span className="text-white/70 truncate">{st.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

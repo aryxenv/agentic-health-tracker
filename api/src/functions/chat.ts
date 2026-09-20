@@ -64,6 +64,9 @@ export async function chatHandler(
               body.userProfile,
               (step) => {
                 sendEvent('step', step);
+              },
+              (delta) => {
+                sendEvent('delta', { delta });
               }
             );
 

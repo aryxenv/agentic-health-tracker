@@ -29,6 +29,7 @@ export async function sendChatMessageStream(
   messages: { role: string; content: string }[],
   userProfile?: UserProfile,
   onStep?: (step: AgenticStep) => void,
+  onDelta?: (delta: string) => void,
   signal?: AbortSignal
 ): Promise<ChatResponse & { steps?: AgenticStep[] }> {
   const response = await fetch(`${API_BASE}/chat`, {
@@ -88,6 +89,8 @@ export async function sendChatMessageStream(
           if (currentEvent === 'step') {
             collectedSteps.push(parsedData);
             if (onStep) onStep(parsedData);
+          } else if (currentEvent === 'delta') {
+            if (onDelta && parsedData.delta) onDelta(parsedData.delta);
           } else if (currentEvent === 'message') {
             finalMessage = parsedData;
           } else if (currentEvent === 'error') {

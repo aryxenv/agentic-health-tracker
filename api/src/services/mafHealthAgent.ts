@@ -839,6 +839,7 @@ export async function runHealthAgentStream(
   messages: ChatMessage[],
   userProfile?: UserProfile,
   onStep?: StepEmitter,
+  onDelta?: (delta: string) => void,
 ): Promise<GroqChatResponse> {
   const { healthAgent, emit, agentRunState, sanitizeDraftEntries } =
     createHealthAgentSystem(userProfile, onStep);
@@ -880,103 +881,130 @@ CONTEXT INSTRUCTIONS:
     },
   );
 
-  try {
-    const runStream = healthAgent.run(fullPrompt);
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const runStream = healthAgent.run(fullPrompt);
 
-    let hasEmittedReasoningThought = false;
-    let reasoningBuffer = "";
+      let hasEmittedReasoningThought = false;
+      let reasoningBuffer = "";
 
-    // Consume stream updates to capture thoughts and step progress without single-token duds
-    for await (const update of runStream) {
-      if (update.contents && Array.isArray(update.contents)) {
-        for (const content of update.contents) {
-          if (content.type === "text_reasoning" && (content as any).text) {
-            reasoningBuffer += (content as any).text;
-            if (
-              !hasEmittedReasoningThought &&
-              reasoningBuffer.trim().length > 15
-            ) {
-              emit(
-                "thought",
-                "Deliberating health telemetry & domain context",
-                {
-                  thought:
-                    "Evaluating input against USDA densities and Adult Compendium MET standards.",
-                },
-              );
-              hasEmittedReasoningThought = true;
-            }
-          } else if (content.type === "function_call") {
-            const fc = content as any;
-            if (fc.name === "consult_nutrition_specialist") {
-              emit("tool_call", "Consulting Nutrition Specialist subagent", {
-                toolName: fc.name,
-              });
-            } else if (fc.name === "consult_activity_specialist") {
-              emit(
-                "tool_call",
-                "Consulting Physical Activity Specialist subagent",
-                { toolName: fc.name },
-              );
+      // Consume stream updates to capture thoughts and step progress without single-token duds
+      for await (const update of runStream) {
+        let deltaEmitted = false;
+        if (update.contents && Array.isArray(update.contents)) {
+          for (const content of update.contents) {
+            if (content.type === "text_reasoning" && (content as any).text) {
+              reasoningBuffer += (content as any).text;
+              if (
+                !hasEmittedReasoningThought &&
+                reasoningBuffer.trim().length > 15
+              ) {
+                emit(
+                  "thought",
+                  "Deliberating health telemetry & domain context",
+                  {
+                    thought:
+                      "Evaluating input against USDA densities and Adult Compendium MET standards.",
+                  },
+                );
+                hasEmittedReasoningThought = true;
+              }
+            } else if (content.type === "text" && (content as any).text) {
+              onDelta?.((content as any).text);
+              deltaEmitted = true;
+            } else if (content.type === "function_call") {
+              const fc = content as any;
+              if (fc.name === "consult_nutrition_specialist") {
+                emit("tool_call", "Consulting Nutrition Specialist subagent", {
+                  toolName: fc.name,
+                });
+              } else if (fc.name === "consult_activity_specialist") {
+                emit(
+                  "tool_call",
+                  "Consulting Physical Activity Specialist subagent",
+                  { toolName: fc.name },
+                );
+              }
             }
           }
         }
-      }
-    }
-
-    const finalResponse = await runStream.finalResponse();
-    const responseText = (finalResponse.text || "").trim();
-
-    let result: GroqChatResponse;
-    if (agentRunState.recordedResult) {
-      result = agentRunState.recordedResult;
-      if (
-        responseText &&
-        responseText.length > 15 &&
-        (!result.reply || responseText.length > result.reply.length)
-      ) {
-        result.reply = responseText;
-      }
-    } else {
-      // Fallback: Check if responseText contains JSON
-      let parsed: any = null;
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          parsed = JSON.parse(jsonMatch[0]);
-        } catch (_) {}
+        if (!deltaEmitted && (update as any).text && typeof (update as any).text === "string") {
+          onDelta?.((update as any).text);
+        }
       }
 
-      if (parsed) {
-        result = {
-          reply: parsed.reply || responseText,
-          needs_clarification: Boolean(parsed.needs_clarification),
-          clarification_prompt: parsed.clarification_prompt || null,
-          draft_entries: sanitizeDraftEntries(
-            Array.isArray(parsed.draft_entries) ? parsed.draft_entries : [],
-          ),
-        };
+      const finalResponse = await runStream.finalResponse();
+      const responseText = (finalResponse.text || "").trim();
+
+      let result: GroqChatResponse;
+      if (agentRunState.recordedResult) {
+        result = agentRunState.recordedResult;
+        if (
+          responseText &&
+          responseText.length > 15 &&
+          (!result.reply || responseText.length > result.reply.length)
+        ) {
+          result.reply = responseText;
+        }
       } else {
-        result = {
-          reply: responseText || "Telemetry analyzed successfully.",
-          needs_clarification: false,
-          clarification_prompt: null,
-          draft_entries: [],
-        };
+        // Fallback: Check if responseText contains JSON
+        let parsed: any = null;
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0]);
+          } catch (_) {}
+        }
+
+        if (parsed) {
+          result = {
+            reply: parsed.reply || responseText,
+            needs_clarification: Boolean(parsed.needs_clarification),
+            clarification_prompt: parsed.clarification_prompt || null,
+            draft_entries: sanitizeDraftEntries(
+              Array.isArray(parsed.draft_entries) ? parsed.draft_entries : [],
+            ),
+          };
+        } else {
+          result = {
+            reply: responseText || "Telemetry analyzed successfully.",
+            needs_clarification: false,
+            clarification_prompt: null,
+            draft_entries: [],
+          };
+        }
       }
-    }
 
-    if (result.draft_entries && result.draft_entries.length > 0) {
-      emit("thought", "Health Agent completed deliberation.", {
-        thought: `Generated ${result.draft_entries.length} telemetry item${result.draft_entries.length > 1 ? "s" : ""}.`,
+      if (result.draft_entries && result.draft_entries.length > 0) {
+        emit("thought", "Health Agent completed deliberation.", {
+          thought: `Generated ${result.draft_entries.length} telemetry item${result.draft_entries.length > 1 ? "s" : ""}.`,
+        });
+      }
+
+      return result;
+    } catch (err: any) {
+      const isRateLimit =
+        err?.status === 429 ||
+        err?.statusCode === 429 ||
+        err?.message?.includes("429") ||
+        err?.message?.toLowerCase().includes("rate limit");
+
+      if (isRateLimit && attempt < maxRetries) {
+        const waitMs = (attempt + 1) * 2000;
+        emit("thought", "Deliberation rate limit backoff", {
+          thought: `Temporarily rate limited. Resuming in ${(waitMs / 1000).toFixed(1)}s...`,
+        });
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
+
+      emit("thought", `Agentic execution note: ${err.message}`, {
+        thought: "Applying fallback telemetry parsing.",
       });
+      throw err;
     }
-
-    return result;
-  } catch (err: any) {
-    emit("thought", `Agentic execution note: ${err.message}`, {
-      thought: "Applying fallback telemetry parsing.",
-    });
-    throw err;
   }
+
+  throw new Error("Health Agent run failed after retries.");
 }
