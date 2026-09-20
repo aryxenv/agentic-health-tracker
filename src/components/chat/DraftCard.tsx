@@ -36,7 +36,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
 
   return (
     <div
-      className={`rounded-[5px] border my-3 transition-colors duration-300 overflow-hidden ${
+      className={`rounded-[5px] border mt-2.5 mb-0 transition-colors duration-300 overflow-hidden ${
         isConfirmed
           ? 'border-[rgba(255,255,255,0.25)] bg-transparent'
           : 'border-[rgba(255,255,255,0.5)] hover:border-white bg-transparent'

@@ -265,7 +265,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   };
 
   return (
-    <div className="flex-1 min-h-0 max-w-2xl mx-auto w-full flex flex-col p-4 sm:p-5 overflow-hidden">
+    <div className="flex-1 min-h-0 max-w-2xl mx-auto w-full flex flex-col p-4 sm:p-5 pb-3 sm:pb-3.5 overflow-hidden">
       {/* Messages Feed */}
       <div
         ref={messagesFeedRef}
@@ -423,7 +423,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           </div>
         )}
 
-        <div ref={messagesEndRef} />
+        <div ref={messagesEndRef} className="!mt-0 h-0" />
       </div>
 
       {/* Input area */}
