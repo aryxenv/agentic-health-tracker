@@ -7,6 +7,8 @@ typical use is for saying what you ate or what activity you did and agent being 
 - **AI**: uses a MAF (Microsoft Agent Framework) agent with model from Groq API (openai/gpt-oss-120b), which has subagents and tools for delegating specific agentic tasks based on user request.
 - **App**: deployed on SWA (static web app) with managed functions.
 - **Data**: cosmosdb for nosql for persistent data storage and optimized retrievals.
+- **Web search**: uses tavily api for web search to get relevant information online.
+- **Food data**: uses open food facts api for food nutrition data.
 - **Github**: repo for the code, used automated ci/cd for deployment for swa and functions.
 
 > [!TIP]
