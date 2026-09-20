@@ -1,7 +1,10 @@
 import { ChevronDown, ChevronRight, Loader2, Send, Square } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { saveLogEntries, sendChatMessageStream } from "../../services/api";
-import { getStoredChatMessages, saveStoredChatMessages } from "../../services/storage";
+import {
+  getStoredChatMessages,
+  saveStoredChatMessages,
+} from "../../services/storage";
 import type {
   AgenticStep,
   ChatMessage,
@@ -22,7 +25,9 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   onEntrySaved,
   onHasMessagesChange,
 }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => getStoredChatMessages());
+  const [messages, setMessages] = useState<ChatMessage[]>(() =>
+    getStoredChatMessages(),
+  );
 
   useEffect(() => {
     saveStoredChatMessages(messages);
@@ -49,7 +54,11 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   // Fallback auto-resize for browsers not yet supporting CSS field-sizing
   useEffect(() => {
     const el = textareaRef.current;
-    if (el && typeof CSS !== "undefined" && !CSS.supports?.("field-sizing", "content")) {
+    if (
+      el &&
+      typeof CSS !== "undefined" &&
+      !CSS.supports?.("field-sizing", "content")
+    ) {
       el.style.height = "auto";
       el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
     }
@@ -61,8 +70,6 @@ export const ChatTab: React.FC<ChatTabProps> = ({
       abortControllerRef.current?.abort();
     };
   }, []);
-
-
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -80,7 +87,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
 
       // Ignore if interaction is within an open modal or dialog
       const target = e.target as HTMLElement | null;
-      if (target?.closest?.('[role="dialog"]') || target?.closest?.('.z-50')) {
+      if (target?.closest?.('[role="dialog"]') || target?.closest?.(".z-50")) {
         return;
       }
 
@@ -90,8 +97,8 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           e.deltaMode === 1
             ? e.deltaY * 24
             : e.deltaMode === 2
-            ? e.deltaY * window.innerHeight
-            : e.deltaY;
+              ? e.deltaY * window.innerHeight
+              : e.deltaY;
         feed.scrollTop += delta;
       }
     };
@@ -200,14 +207,19 @@ export const ChatTab: React.FC<ChatTabProps> = ({
 
       setMessages((prev) => [...prev, healthAgentMessage]);
     } catch (err: any) {
-      if (err.name === "AbortError" || err.message?.toLowerCase().includes("abort")) {
+      if (
+        err.name === "AbortError" ||
+        err.message?.toLowerCase().includes("abort")
+      ) {
         const partial = streamingTextRef.current.trim();
         setMessages((prev) => [
           ...prev,
           {
             id: `aborted_${Date.now()}`,
             sender: "health_agent",
-            text: partial ? `${partial} [Stopped]` : "Response stopped by user.",
+            text: partial
+              ? `${partial} [Stopped]`
+              : "Response stopped by user.",
             timestamp: new Date().toISOString(),
             agenticSteps: liveSteps.length > 0 ? liveSteps : undefined,
           },
@@ -356,9 +368,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           <div className="flex flex-col items-start w-full">
             <div className="max-w-[90%] sm:max-w-[85%] rounded-panel p-3 text-[0.95rem] leading-[1.6] border border-quarter-light bg-transparent space-y-2">
               <div className="text-[0.76rem] text-white/50">
-                <span className="uppercase tracking-wider">
-                  HEALTH AGENT
-                </span>
+                <span className="uppercase tracking-wider">HEALTH AGENT</span>
               </div>
 
               {/* Streaming Output */}
@@ -370,7 +380,13 @@ export const ChatTab: React.FC<ChatTabProps> = ({
               ) : null}
 
               {/* Real-time Agentic Loop Steps Telemetry */}
-              <div className={streamingText ? "pt-2 border-t border-[rgba(255,255,255,0.15)]" : ""}>
+              <div
+                className={
+                  streamingText
+                    ? "pt-2 border-t border-[rgba(255,255,255,0.15)]"
+                    : ""
+                }
+              >
                 <div className="flex items-center space-x-2 text-[0.76rem] text-white/70">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                   <span className="tracking-wide">
@@ -382,7 +398,10 @@ export const ChatTab: React.FC<ChatTabProps> = ({
                 {liveSteps.length > 0 && (
                   <div className="pl-4 space-y-1 text-[0.76rem] text-white/50 border-l border-[rgba(255,255,255,0.15)] mt-1.5">
                     {liveSteps.slice(-3).map((st) => (
-                      <div key={st.id} className="flex items-center space-x-1.5">
+                      <div
+                        key={st.id}
+                        className="flex items-center space-x-1.5"
+                      >
                         <span className="text-white/30 uppercase text-[0.68rem]">
                           [
                           {st.type === "tool_call"
@@ -392,7 +411,9 @@ export const ChatTab: React.FC<ChatTabProps> = ({
                               : "Thought"}
                           ]
                         </span>
-                        <span className="text-white/70 truncate">{st.title}</span>
+                        <span className="text-white/70 truncate">
+                          {st.title}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -407,7 +428,6 @@ export const ChatTab: React.FC<ChatTabProps> = ({
 
       {/* Input area */}
       <div className="shrink-0 pt-3">
-
         {/* Text Area Input */}
         <form
           onSubmit={(e) => {
@@ -422,7 +442,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Log food or exercise (e.g. '1 bowl oatmeal' or '30m walk')..."
+            placeholder="Log food or exercise (e.g. '1 bowl oatmeal')..."
             disabled={loading}
             style={{ fieldSizing: "content" } as React.CSSProperties}
             className="auto-expand w-full bg-transparent pl-3 pr-10 py-2.5 text-[0.95rem] text-white placeholder-white/30 focus:outline-none resize-none min-h-[44px] max-h-[160px] overflow-y-auto leading-[1.5] block no-scrollbar"
