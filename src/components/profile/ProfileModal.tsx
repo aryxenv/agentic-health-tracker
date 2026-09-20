@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Calculator } from 'lucide-react';
-import type { UserProfile } from '../../types/health';
+import type { TrainingFocus, UserProfile } from '../../types/health';
 import { calculateBMR, calculateMacroTargets, calculateTDEE } from '../../services/calculations';
 
 interface ProfileModalProps {
@@ -91,7 +91,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             {/* Macro pills */}
             <div className="grid grid-cols-4 gap-2 pt-2 border-t border-[rgba(255,255,255,0.15)] text-center text-[0.855rem]">
               <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
-                <div className="text-[0.76rem] text-white/50 uppercase">Protein</div>
+                <div className="text-[0.76rem] text-white/50 uppercase">
+                  Protein ({targets.proteinMultiplier}g)
+                </div>
                 <div className="font-medium text-white">{targets.proteinGrams}g</div>
               </div>
               <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
@@ -238,6 +240,52 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       : 'Bulk (+300)'}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Training Routine Focus (ISSN Protein Multiplier) */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[0.76rem] uppercase tracking-wider text-white/50">
+                  Training Routine (ISSN Target)
+                </label>
+                <span className="text-[0.76rem] text-white/50">
+                  {targets.proteinMultiplier}g / kg
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(
+                  [
+                    { id: 'cardio', label: 'Cardio & Endurance', sub: '1.3g/kg' },
+                    { id: 'balanced', label: 'Balanced Fitness', sub: '1.5g/kg' },
+                    { id: 'strength', label: 'Strength & Hypertrophy', sub: '1.8g/kg' },
+                    { id: 'athletic_cut', label: 'Athletic Cut', sub: '2.2g/kg' }
+                  ] as const
+                ).map((item) => {
+                  const isSelected = (formData.trainingFocus || 'cardio') === item.id;
+                  return (
+                    <button
+                      type="button"
+                      key={item.id}
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          trainingFocus: item.id as TrainingFocus
+                        })
+                      }
+                      className={`p-2.5 rounded-[5px] text-left border transition-all duration-300 flex flex-col justify-between ${
+                        isSelected
+                          ? 'border-white text-white opacity-100 bg-transparent'
+                          : 'border-[rgba(255,255,255,0.25)] text-white opacity-50 hover:opacity-100 bg-transparent'
+                      }`}
+                    >
+                      <span className="text-[0.825rem] font-medium leading-tight mb-1">
+                        {item.label}
+                      </span>
+                      <span className="text-[0.72rem] text-white/60">{item.sub}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -275,7 +275,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           {/* Protein */}
           <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-3 space-y-2">
             <div className="flex justify-between items-baseline text-[0.855rem]">
-              <span className="text-white/70">Protein (ISSN 1.8g/kg)</span>
+              <span className="text-white/70">
+                Protein (ISSN {macroTargets.proteinMultiplier || 1.8}g/kg)
+              </span>
               <span className="font-medium text-white">
                 {Math.round(aggregations.totalProtein)}g / {scaledProteinTarget}g
               </span>

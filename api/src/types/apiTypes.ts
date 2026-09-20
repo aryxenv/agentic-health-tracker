@@ -1,3 +1,5 @@
+export type TrainingFocus = 'cardio' | 'balanced' | 'strength' | 'athletic_cut';
+
 export interface UserProfile {
   weightKg: number;
   heightCm: number;
@@ -5,6 +7,7 @@ export interface UserProfile {
   sex: 'male' | 'female';
   activityLevel: 'sedentary' | 'light' | 'moderate' | 'very_active';
   goal: 'cut' | 'maintain' | 'bulk';
+  trainingFocus?: TrainingFocus;
 }
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'workout';
