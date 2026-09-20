@@ -49,9 +49,11 @@ git remote add origin "<your-github-repo-url>"
 git push -u origin main
 ```
 
-5. get an api key from [Groq API](https://groqapi.com/) and copy it somewhere safe. u will need it in the next step
+5. llm provider: get an api key from [Groq API](https://groqapi.com/) and copy it somewhere safe. u will need it later
 
-6. create a file called `local.settings.json` in the `api` folder with the following content (fill in the groq key here, leave the rest as-is):
+6. web search: get an api key from [Tavily](https://tavily.com/) and copy it somewhere safe. u will need it later
+
+7. create a file called `local.settings.json` in the `api` folder with the following content (fill in the groq and tavily key here, leave the rest as-is):
 
 ```json
 {
@@ -60,6 +62,7 @@ git push -u origin main
     "AzureWebJobsStorage": "UseDevelopmentStorage=false",
     "FUNCTIONS_WORKER_RUNTIME": "node",
     "GROQ_API_KEY": "<YOUR_GROQ_API_KEY>",
+    "TAVILY_API_KEY": "<YOUR_TAVILY_API_KEY>",
     "COSMOS_ENDPOINT": "<>YOUR_COSMOS_ENDPOINT>",
     "COSMOS_KEY": "<YOUR_COSMOS_KEY>",
     "COSMOS_DATABASE_ID": "<YOUR_COSMOS_DATABASE_ID>",
@@ -71,9 +74,9 @@ git push -u origin main
 }
 ```
 
-7.  on azure, create a resource group called `agentic-health-tracker`
+8.  on azure, create a resource group called `agentic-health-tracker`
 
-8.  open the folder with an agent of your choice and give it this prompt to set up cosmosdb, you can let this run in the background while you move onto the next step
+9.  open the folder with an agent of your choice and give it this prompt to set up cosmosdb, you can let this run in the background while you move onto the next step
 
 > [!IMPORTANT]
 > you must be logged in with Azure CLI for this to work through the agent, and it's recommended to set an allow-all permission so the agent can use terminal commands without continuous approval.
@@ -99,23 +102,24 @@ Set up Azure Cosmos DB for NoSQL for this project using my active Azure CLI logi
      - `COSMOS_CONTAINER_ID`
 ```
 
-9. create a new static web app on azure portal, and link it to your github repo. make sure to select the correct branch (`main`) and folder for the build. check the configs below
+10. create a new static web app on azure portal, and link it to your github repo. make sure to select the correct branch (`main`) and folder for the build. check the configs below
 
 ![swa config](./assets/swa_config.png)
 
-10. review and create the swa resource and wait for like 5 mins till it's ready. you will get a public url for your swa which is basically your app url.
+11. review and create the swa resource and wait for like 5 mins till it's ready. you will get a public url for your swa which is basically your app url.
 
-11. before you access your app url, you need to set some environment variables on the swa resource. go to your swa resource, then under settings go to environment variables, and add the following variables with the values (check `api/local.settings.json` for the values you need to set):
+12. before you access your app url, you need to set some environment variables on the swa resource. go to your swa resource, then under settings go to environment variables, and add the following variables with the values (check `api/local.settings.json` for the values you need to set):
 
 | Name                | Value                      |
 | ------------------- | -------------------------- |
 | GROQ_API_KEY        | <YOUR_GROQ_API_KEY>        |
+| TAVILY_API_KEY      | <YOUR_TAVILY_API_KEY>      |
 | COSMOS_ENDPOINT     | <YOUR_COSMOS_ENDPOINT>     |
 | COSMOS_KEY          | <YOUR_COSMOS_KEY>          |
 | COSMOS_DATABASE_ID  | <YOUR_COSMOS_DATABASE_ID>  |
 | COSMOS_CONTAINER_ID | <YOUR_COSMOS_CONTAINER_ID> |
 
-12. that's it, you should now be able to go on the swa public url and use the app.
+13. that's it, you should now be able to go on the swa public url and use the app.
 
 ## bonus
 
