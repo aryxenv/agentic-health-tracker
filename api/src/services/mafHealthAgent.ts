@@ -881,7 +881,7 @@ CONTEXT INSTRUCTIONS:
     },
   );
 
-  const maxRetries = 2;
+  const maxRetries = 3;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const runStream = healthAgent.run(fullPrompt);
@@ -991,9 +991,25 @@ CONTEXT INSTRUCTIONS:
         err?.message?.toLowerCase().includes("rate limit");
 
       if (isRateLimit && attempt < maxRetries) {
-        const waitMs = (attempt + 1) * 2000;
+        let waitMs = (attempt + 1) * 3000;
+        const retryAfterHeader =
+          err?.headers?.["retry-after"] ||
+          (typeof err?.headers?.get === "function"
+            ? err.headers.get("retry-after")
+            : null);
+        const retryAfterNum = Number(retryAfterHeader);
+        if (retryAfterNum > 0) {
+          waitMs = Math.ceil(retryAfterNum * 1000) + 750;
+        } else {
+          const match = (err?.message || "").match(/try again in ([\d.]+)s/i);
+          if (match) {
+            waitMs = Math.ceil(parseFloat(match[1]) * 1000) + 750;
+          }
+        }
+        waitMs = Math.min(Math.max(waitMs, 2000), 16000);
+
         emit("thought", "Deliberation rate limit backoff", {
-          thought: `Temporarily rate limited. Resuming in ${(waitMs / 1000).toFixed(1)}s...`,
+          thought: `Temporarily rate limited by provider. Pausing ${(waitMs / 1000).toFixed(1)}s before auto-resuming...`,
         });
         await new Promise((resolve) => setTimeout(resolve, waitMs));
         continue;
