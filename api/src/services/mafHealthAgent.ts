@@ -14,7 +14,7 @@ import {
 } from "../types/apiTypes";
 
 dotenv.config();
-if (!process.env.GROQ_API_KEY) {
+if (!process.env.GROQ_API_KEY || !process.env.TAVILY_API_KEY) {
   dotenv.config({ path: path.resolve(process.cwd(), "../.env") });
   dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
   dotenv.config({ path: path.resolve(__dirname, "../../.env") });
@@ -22,209 +22,6 @@ if (!process.env.GROQ_API_KEY) {
 
 const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
-// Standard USDA Reference Densities (per 100g or typical unit)
-const USDA_NUTRITION_REFERENCE: Record<
-  string,
-  {
-    servingGrams: number;
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    fiber: number;
-    sugar: number;
-    sodiumMg: number;
-    defaultServing: string;
-  }
-> = {
-  "chicken breast": {
-    servingGrams: 100,
-    calories: 165,
-    protein: 31,
-    carbs: 0,
-    fat: 3.6,
-    fiber: 0,
-    sugar: 0,
-    sodiumMg: 74,
-    defaultServing: "100g cooked",
-  },
-  egg: {
-    servingGrams: 50,
-    calories: 72,
-    protein: 6.3,
-    carbs: 0.4,
-    fat: 4.8,
-    fiber: 0,
-    sugar: 0.2,
-    sodiumMg: 71,
-    defaultServing: "1 large egg (50g)",
-  },
-  eggs: {
-    servingGrams: 50,
-    calories: 72,
-    protein: 6.3,
-    carbs: 0.4,
-    fat: 4.8,
-    fiber: 0,
-    sugar: 0.2,
-    sodiumMg: 71,
-    defaultServing: "1 large egg (50g)",
-  },
-  "white rice": {
-    servingGrams: 158,
-    calories: 205,
-    protein: 4.2,
-    carbs: 44.5,
-    fat: 0.4,
-    fiber: 0.6,
-    sugar: 0.1,
-    sodiumMg: 1.6,
-    defaultServing: "1 cup cooked (158g)",
-  },
-  rice: {
-    servingGrams: 158,
-    calories: 205,
-    protein: 4.2,
-    carbs: 44.5,
-    fat: 0.4,
-    fiber: 0.6,
-    sugar: 0.1,
-    sodiumMg: 1.6,
-    defaultServing: "1 cup cooked (158g)",
-  },
-  "brown rice": {
-    servingGrams: 195,
-    calories: 216,
-    protein: 5.0,
-    carbs: 44.8,
-    fat: 1.8,
-    fiber: 3.5,
-    sugar: 0.7,
-    sodiumMg: 10,
-    defaultServing: "1 cup cooked (195g)",
-  },
-  oats: {
-    servingGrams: 40,
-    calories: 150,
-    protein: 5.0,
-    carbs: 27.0,
-    fat: 2.5,
-    fiber: 4.0,
-    sugar: 1.0,
-    sodiumMg: 2,
-    defaultServing: "1/2 cup dry (40g)",
-  },
-  oatmeal: {
-    servingGrams: 234,
-    calories: 158,
-    protein: 6.0,
-    carbs: 27.0,
-    fat: 3.2,
-    fiber: 4.0,
-    sugar: 1.1,
-    sodiumMg: 115,
-    defaultServing: "1 cup cooked (234g)",
-  },
-  salmon: {
-    servingGrams: 100,
-    calories: 208,
-    protein: 20.4,
-    carbs: 0,
-    fat: 13.4,
-    fiber: 0,
-    sugar: 0,
-    sodiumMg: 59,
-    defaultServing: "100g cooked fillet",
-  },
-  banana: {
-    servingGrams: 118,
-    calories: 105,
-    protein: 1.3,
-    carbs: 27.0,
-    fat: 0.3,
-    fiber: 3.1,
-    sugar: 14.4,
-    sodiumMg: 1.2,
-    defaultServing: "1 medium (118g)",
-  },
-  apple: {
-    servingGrams: 182,
-    calories: 95,
-    protein: 0.5,
-    carbs: 25.0,
-    fat: 0.3,
-    fiber: 4.4,
-    sugar: 19.0,
-    sodiumMg: 1.8,
-    defaultServing: "1 medium (182g)",
-  },
-  milk: {
-    servingGrams: 244,
-    calories: 149,
-    protein: 7.7,
-    carbs: 11.7,
-    fat: 8.0,
-    fiber: 0,
-    sugar: 12.3,
-    sodiumMg: 105,
-    defaultServing: "1 cup whole milk (244g)",
-  },
-  pasta: {
-    servingGrams: 140,
-    calories: 220,
-    protein: 8.1,
-    carbs: 43.2,
-    fat: 1.3,
-    fiber: 2.5,
-    sugar: 0.8,
-    sodiumMg: 1,
-    defaultServing: "1 cup cooked (140g)",
-  },
-  beef: {
-    servingGrams: 100,
-    calories: 250,
-    protein: 26.0,
-    carbs: 0,
-    fat: 15.0,
-    fiber: 0,
-    sugar: 0,
-    sodiumMg: 72,
-    defaultServing: "100g lean beef",
-  },
-  "olive oil": {
-    servingGrams: 14,
-    calories: 119,
-    protein: 0,
-    carbs: 0,
-    fat: 13.5,
-    fiber: 0,
-    sugar: 0,
-    sodiumMg: 0.3,
-    defaultServing: "1 tbsp (14g)",
-  },
-  "whey protein": {
-    servingGrams: 30,
-    calories: 120,
-    protein: 24.0,
-    carbs: 3.0,
-    fat: 1.5,
-    fiber: 0,
-    sugar: 1.0,
-    sodiumMg: 130,
-    defaultServing: "1 scoop (30g)",
-  },
-  bread: {
-    servingGrams: 36,
-    calories: 90,
-    protein: 3.0,
-    carbs: 15.0,
-    fat: 1.0,
-    fiber: 1.5,
-    sugar: 1.5,
-    sodiumMg: 140,
-    defaultServing: "1 slice (36g)",
-  },
-};
 
 // 2024 Adult Compendium of Physical Activities MET Reference Table
 const MET_REFERENCE_TABLE: Record<
@@ -327,93 +124,257 @@ export function createHealthAgentSystem(
     includeReasoningEncryptedContent: false,
   });
 
-  // Tool 1: USDA Nutrition Lookup Tool
-  const usdaNutritionTool = tool({
-    name: "lookup_usda_nutrition",
-    description:
-      "Look up standard USDA FoodData Central nutritional densities for food items.",
-    parameters: {
-      type: "object",
-      properties: {
-        foodItem: { type: "string", description: "Name of the food item" },
-        amount: {
-          type: "number",
-          description: "Estimated quantity or portion weight",
-        },
-        unit: {
-          type: "string",
-          description: "Measurement unit (e.g. grams, cups, slices, items)",
-        },
-      },
-      required: ["foodItem"],
-    },
-    execute: async (args: any) => {
-      const foodItem = String(args?.foodItem || "");
-      const amount = Number(args?.amount || 1);
-      const unit = String(args?.unit || "serving");
-      emit("tool_call", `Consulting USDA FoodData Central for "${foodItem}"`, {
-        toolName: "lookup_usda_nutrition",
-        args: { foodItem, amount, unit },
-      });
+  // Helper: Open Food Facts query implementation
+  const executeOpenFoodFacts = async (
+    productName: string,
+    amount = 100,
+    unit = "g",
+  ) => {
+    emit("tool_call", `Consulting Open Food Facts for "${productName}"`, {
+      toolName: "search_open_food_facts",
+      args: { productName, amount, unit },
+    });
 
-      const normalized = foodItem.toLowerCase().trim();
-      let match = Object.entries(USDA_NUTRITION_REFERENCE).find(
-        ([key]) => normalized.includes(key) || key.includes(normalized),
+    try {
+      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&search_simple=1&action=process&json=1&page_size=2`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "HealthTrackerApp/1.0 (contact@healthtracker.app)",
+        },
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
+
+      if (!response.ok) {
+        throw new Error(`Open Food Facts returned HTTP ${response.status}`);
+      }
+
+      const data: any = await response.json();
+      const product = data?.products?.[0];
+
+      if (!product) {
+        const notFound = {
+          found: false,
+          message: `Product "${productName}" not found in Open Food Facts. Use search_web to look up live facts.`,
+        };
+        emit("tool_result", `No match in Open Food Facts for "${productName}"`, {
+          toolName: "search_open_food_facts",
+          result: notFound,
+        });
+        return notFound;
+      }
+
+      const n = product.nutriments || {};
+      const kcal100 =
+        Number(
+          n["energy-kcal_100g"] ??
+            n["energy-kcal"] ??
+            (n["energy_100g"] ? n["energy_100g"] / 4.184 : 0),
+        ) || 0;
+      const protein100 = Number(n.proteins_100g ?? n.proteins ?? 0);
+      const carbs100 = Number(n.carbohydrates_100g ?? n.carbohydrates ?? 0);
+      const fat100 = Number(n.fat_100g ?? n.fat ?? 0);
+      const fiber100 = Number(n.fiber_100g ?? n.fiber ?? 0);
+      const sugar100 = Number(n.sugars_100g ?? n.sugars ?? 0);
+      const saltNum = Number(n.salt_100g || 0);
+      const sodiumMg100 = Math.round(
+        Number(n.sodium_100g !== undefined ? n.sodium_100g : saltNum / 2.5) *
+          1000,
       );
 
-      let result;
-      if (match) {
-        const [matchedKey, ref] = match;
-        // Scale based on amount if specified in grams or count
-        let scale = 1.0;
-        if (unit === "g" || unit === "grams") {
-          scale = amount / ref.servingGrams;
-        } else if (amount > 1) {
-          scale = amount;
-        }
-        result = {
-          foodItem,
-          matchedStandard: matchedKey,
-          servingInfo: `${amount} ${unit} (~${Math.round(ref.servingGrams * scale)}g)`,
-          calories: Math.round(ref.calories * scale),
-          protein: Number((ref.protein * scale).toFixed(1)),
-          carbs: Number((ref.carbs * scale).toFixed(1)),
-          fat: Number((ref.fat * scale).toFixed(1)),
-          fiber: Number((ref.fiber * scale).toFixed(1)),
-          sugar: Number((ref.sugar * scale).toFixed(1)),
-          sodiumMg: Math.round(ref.sodiumMg * scale),
-          source: "USDA FoodData Central",
-        };
-      } else {
-        // Generic nutritional density fallback
-        const estScale = Math.max(1, amount);
-        result = {
-          foodItem,
-          matchedStandard: "general adult portion average",
-          servingInfo: `${amount} ${unit}`,
-          calories: Math.round(180 * estScale),
-          protein: Number((8.0 * estScale).toFixed(1)),
-          carbs: Number((22.0 * estScale).toFixed(1)),
-          fat: Number((6.0 * estScale).toFixed(1)),
-          fiber: Number((2.0 * estScale).toFixed(1)),
-          sugar: Number((3.0 * estScale).toFixed(1)),
-          sodiumMg: Math.round(120 * estScale),
-          source: "Scientific Adult Average Estimation",
-        };
+      let scale = 1.0;
+      const servingG = Number(product.serving_quantity) || 100;
+      if (unit === "g" || unit === "grams" || unit === "ml") {
+        scale = amount / 100;
+      } else if (
+        unit === "serving" ||
+        unit === "bottle" ||
+        unit === "can" ||
+        unit === "pot" ||
+        unit === "portion"
+      ) {
+        scale = (amount * servingG) / 100;
+      } else if (amount > 1 && amount <= 10) {
+        scale = (amount * servingG) / 100;
       }
+
+      const result = {
+        found: true,
+        productName:
+          product.product_name ||
+          product.product_name_en ||
+          product.product_name_nl ||
+          product.product_name_fr ||
+          productName,
+        brand: product.brands || "Brand",
+        servingInfo: `${amount} ${unit} (~${Math.round(servingG * (scale / (amount || 1)) * (amount || 1))}g/ml)`,
+        calories: Math.round(kcal100 * scale),
+        protein: Number((protein100 * scale).toFixed(1)),
+        carbs: Number((carbs100 * scale).toFixed(1)),
+        fat: Number((fat100 * scale).toFixed(1)),
+        fiber: Number((fiber100 * scale).toFixed(1)),
+        sugar: Number((sugar100 * scale).toFixed(1)),
+        sodiumMg: Math.round(sodiumMg100 * scale),
+        source: "Open Food Facts (Belgium / Europe)",
+      };
 
       emit(
         "tool_result",
-        `USDA nutritional profile resolved for "${foodItem}"`,
+        `Nutritional facts retrieved from Open Food Facts for "${productName}"`,
         {
-          toolName: "lookup_usda_nutrition",
+          toolName: "search_open_food_facts",
           result,
         },
       );
 
       return result;
+    } catch (err: any) {
+      const errorResult = {
+        found: false,
+        error: err.message,
+        message: `Open Food Facts lookup failed: ${err.message}. Please use search_web to look up "${productName}".`,
+      };
+      emit("tool_result", `Open Food Facts bypassed (${err.message})`, {
+        toolName: "search_open_food_facts",
+        result: errorResult,
+      });
+      return errorResult;
+    }
+  };
+
+  // Helper: Tavily search query implementation
+  const executeTavilySearch = async (query: string) => {
+    emit("tool_call", `Searching live web for "${query}"`, {
+      toolName: "search_web",
+      args: { query },
+    });
+
+    const tavilyKey =
+      process.env.TAVILY_API_KEY || process.env.VITE_TAVILY_API_KEY;
+
+    if (!tavilyKey) {
+      const errorResult = {
+        found: false,
+        error: "TAVILY_API_KEY is not configured.",
+        message:
+          "Web search is currently unavailable because TAVILY_API_KEY is missing in environment variables.",
+      };
+      emit("tool_result", `Web search skipped (missing API key)`, {
+        toolName: "search_web",
+        result: errorResult,
+      });
+      return errorResult;
+    }
+
+    try {
+      const response = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          api_key: tavilyKey,
+          query,
+          search_depth: "basic",
+          max_results: 3,
+          include_answer: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(
+          `Tavily responded with HTTP ${response.status}: ${errText}`,
+        );
+      }
+
+      const data: any = await response.json();
+      const result = {
+        query,
+        directAnswer: data.answer || null,
+        results: (data.results || []).slice(0, 3).map((r: any) => ({
+          title: r.title,
+          url: r.url,
+          content: r.content,
+        })),
+        source: "Tavily Live Web Search",
+      };
+
+      emit("tool_result", `Live web search completed for "${query}"`, {
+        toolName: "search_web",
+        result,
+      });
+
+      return result;
+    } catch (err: any) {
+      const errorResult = {
+        found: false,
+        error: err.message,
+        message: `Web search error for "${query}": ${err.message}`,
+      };
+      emit("tool_result", `Web search failed for "${query}"`, {
+        toolName: "search_web",
+        result: errorResult,
+      });
+      return errorResult;
+    }
+  };
+
+  // Tool 1: Open Food Facts Lookup Tool (Belgian, European & Global Grocery Products)
+  const openFoodFactsTool = tool({
+    name: "search_open_food_facts",
+    description:
+      "Search the live Open Food Facts database for Belgian and European supermarket products (Albert Heijn, Delhaize, Colruyt, Carrefour, Lidl, Aldi) and brands (Melkunie, Alpro, Boni, etc.). Returns exact calories and macronutrients per 100g and scaled to portions.",
+    parameters: {
+      type: "object",
+      properties: {
+        productName: {
+          type: "string",
+          description:
+            "Name of the product or brand (e.g. 'Melkunie protein drink', 'Alpro soya', 'Delhaize skyr')",
+        },
+        amount: {
+          type: "number",
+          description: "Portion quantity or amount (e.g. 200, 1, 330)",
+        },
+        unit: {
+          type: "string",
+          description:
+            "Portion unit (e.g. 'g', 'grams', 'ml', 'bottle', 'can', 'pot', 'serving')",
+        },
+      },
+      required: ["productName"],
+    },
+    execute: async (args: any) => {
+      const productName = String(args?.productName || "").trim();
+      const amount = Number(args?.amount || 100);
+      const unit = String(args?.unit || "g").trim().toLowerCase();
+      return executeOpenFoodFacts(productName, amount, unit);
     },
   });
+
+  // Tool 2: Tavily Live Web Search Tool
+  const webSearchTool = tool({
+    name: "search_web",
+    description:
+      "Search the live web using Tavily for factual nutritional details, calories, and macros for restaurant meals (Belgian frituur, stoofvlees, waterzooi, waffles, takeaway), recipes, European brands, or items not found in databases.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "Targeted nutritional search query (e.g. 'Melkunie protein drink strawberry nutrition facts calories protein', 'Gentse waterzooi portion calories macros', 'Delhaize skyr calories per 100g').",
+        },
+      },
+      required: ["query"],
+    },
+    execute: async (args: any) => {
+      const query = String(args?.query || "").trim();
+      return executeTavilySearch(query);
+    },
+  });
+
 
   // Tool 2: 2024 Adult Compendium MET & Energy Expenditure Tool
   const metExpenditureTool = tool({
@@ -716,14 +677,18 @@ export function createHealthAgentSystem(
     client,
     name: "NutritionSpecialist",
     description:
-      "Expert nutritionist subagent that decomposes foods into USDA FoodData Central components and calculates exact macros.",
+      "Expert nutritionist subagent that retrieves verified online nutrition facts, Belgian/European supermarket products, and restaurant meals.",
     instructions: `You are the Nutrition Specialist subagent for Health Agent.
 Your duty:
-1. Deconstruct user food logs into specific food components.
-2. Call "lookup_usda_nutrition" to obtain USDA nutritional densities for each food item.
-3. Compute exact portion-scaled calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
-4. Return a structured breakdown for each food item.`,
-    tools: [usdaNutritionTool],
+1. Deconstruct user food logs into specific food items, brands, and portion amounts.
+2. For packaged grocery items (especially Belgian/European supermarket brands like Melkunie, Alpro, Delhaize, Albert Heijn, Colruyt/Boni, Carrefour, Lidl, Aldi):
+   - Call "search_open_food_facts" with the product name and portion.
+   - If not found or if Open Food Facts is unavailable, call "search_web" via Tavily.
+3. For restaurant meals, takeout, Belgian dishes (e.g. frituur, stoofvlees, Gentse waterzooi, waffles), recipes, or unlisted foods:
+   - Call "search_web" via Tavily with a concise query (e.g. "<food name> calories macros protein").
+4. Accurately compute portion-scaled values: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
+5. Return a clear, structured breakdown for each food item.`,
+    tools: [openFoodFactsTool, webSearchTool],
   });
 
   // Subagent 2: Physical Activity Specialist
@@ -746,7 +711,7 @@ Your duty:
   const consultNutritionTool = agentAsTool(nutritionSpecialist, {
     name: "consult_nutrition_specialist",
     description:
-      "Consult the Nutrition Specialist to decompose and analyze foods using USDA densities.",
+      "Consult the Nutrition Specialist to retrieve verified online nutrition facts, European/Belgian supermarket products, and restaurant meal macros.",
   });
 
   const consultActivityTool = agentAsTool(activitySpecialist, {
@@ -764,34 +729,42 @@ Your duty:
 - Age: ${userProfile.age}
 - Sex: ${userProfile.sex}
 - Activity Level: ${userProfile.activityLevel}
-- Health Goal: ${userProfile.goal}`;
+- Health Goal: ${userProfile.goal}
+- Training Routine Focus: ${userProfile.trainingFocus || 'cardio'}`;
   }
 
   const primaryInstructions = `You are the Health Agent: an elite, scientifically rigorous health, nutrition, and physical activity tracking agent.
 
 SCIENTIFIC CORE RULES:
 1. Nutrition data:
-   - Must accurately reflect standard USDA FoodData Central nutritional densities.
-   - Use consult_nutrition_specialist or lookup_usda_nutrition to calculate: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
-   - If portions are specified, scale nutrients accordingly.
+   - Must retrieve verified, accurate nutritional data using live online sources (Open Food Facts & Tavily web search).
+   - Use consult_nutrition_specialist, search_web, or search_open_food_facts to determine: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
+   - If portions are specified, scale nutrients accurately to the user's portion.
 2. Physical activity & energy expenditure:
    - Use consult_activity_specialist or calculate_met_expenditure to apply 2024 Adult Compendium of Physical Activities MET values.
    - Total Calories Burned = MET * weight_kg * (duration_minutes / 60).
    - Net Active Calories = (MET - 1) * weight_kg * (duration_minutes / 60).
    - Use user's profile weight (${userProfile?.weightKg || 70}kg).
 3. Ambiguity & Clarification Protocol:
-   - When user input lacks necessary details, determine if the missing detail is ESTIMABLE or IMPORTANT/CRITICAL:
-     * ESTIMABLE / NON-CRITICAL (e.g. food portion size when the food item is known, like chicken breast, rice, oatmeal, or typical walking pace):
+   - When user input lacks necessary details (such as portion size, quantities, or exercise duration):
+     * If the missing detail is non-critical / estimable (e.g. food portion size without explicit grams, or workout pace):
        - Call record_health_log with needs_clarification: true, draft_entries: [], and clarification_prompt summarizing the missing detail.
-       - In your reply message, ask 1 concise clarifying question about the missing detail, AND explicitly inform the user: "If you're not sure, you can simply reply with 'estimate' and I will calculate based on standard average adult portions."
-     * IMPORTANT / CRITICAL (e.g. completely unknown food name, workout with no duration specified where guessing could be wildly inaccurate, or medical/safety ambiguity):
+       - In your reply message, ask 1 concise clarifying question about the missing detail, AND explicitly inform the user: "If you're not sure, you can simply reply with 'estimate' and I will make a reasonable assumption based on your description and context clues."
+     * If the missing detail is critical (e.g. completely unknown food name, or workout with zero duration where guessing is impossible):
        - Call record_health_log with needs_clarification: true, draft_entries: [], and clarification_prompt summarizing the missing detail.
-       - In your reply message, ask directly for the specific required information.
-       - DO NOT offer an estimation option in the output when the missing detail is critical.
+       - In your reply message, ask directly for the specific required information without offering estimation.
    - When user input is clear OR if the user replies "estimate":
      - Set needs_clarification: false, clarification_prompt: null.
-     - Calculate telemetry using USDA FoodData Central densities or 2024 Adult Compendium MET values (applying standard adult portions/averages if "estimate" was requested).
-     - Call record_health_log with the calculated draft_entries and an encouraging scientific summary reply.
+     - CONTEXT-AWARE ESTIMATION RULES:
+       * When estimating, NEVER blindly default to a static standard portion if the user provided descriptive context clues anywhere in the conversation!
+       * Actively scan and extract context clues:
+         - Size & volume adjectives (e.g., "huge", "big bowl", "large portion", "small slice", "heaping spoonful", "deep plate", "generous scoop", "handful", "thick cut").
+         - Packaging & container fractions (e.g., "half the bottle", "whole can", "a tub", "2 scoops", "a slice", "a pint", "small takeaway box").
+         - Situational & modifier context (e.g., "heavy dinner", "light afternoon snack", "shared with a friend", "extra protein").
+       * If context clues exist: scale the portion size up or down logically based on those clues (e.g., "big bowl" -> ~1.5x-2.0x standard portion; "half a bottle" -> 50% of container size; "small cup" -> ~0.6x; "shared with a friend" -> 50%).
+       * If zero context clues exist (e.g., only "I had pasta"): use realistic average adult portion baselines.
+       * In your reply message, transparently explain your reasoning based on their clues (e.g., "Based on your description of a 'big bowl', I estimated ~300g cooked pasta (~450 kcal). You can edit the entry if needed!").
+     - Call record_health_log with the calculated draft_entries and your clear, encouraging summary reply.
 4. MULTI-TURN CONVERSATION AWARENESS:
    - Carefully interpret conversational context from prior turns.
    - If the user modifies, corrects, or appends items (e.g. "actually make that 3 eggs", "add 1 banana", "change to 45 mins"):
@@ -810,7 +783,8 @@ ${userContext}`;
     tools: [
       consultNutritionTool,
       consultActivityTool,
-      usdaNutritionTool,
+      openFoodFactsTool,
+      webSearchTool,
       metExpenditureTool,
       recordHealthLogTool,
     ],
@@ -823,7 +797,8 @@ ${userContext}`;
     agentRunState,
     sanitizeDraftEntries,
     tools: {
-      usdaNutritionTool,
+      openFoodFactsTool,
+      webSearchTool,
       metExpenditureTool,
       recordHealthLogTool,
       consultNutritionTool,
@@ -905,7 +880,7 @@ CONTEXT INSTRUCTIONS:
                   "Deliberating health telemetry & domain context",
                   {
                     thought:
-                      "Evaluating input against USDA densities and Adult Compendium MET standards.",
+                      "Evaluating input against live online nutrition facts and Adult Compendium MET standards.",
                   },
                 );
                 hasEmittedReasoningThought = true;
@@ -925,6 +900,14 @@ CONTEXT INSTRUCTIONS:
                   "Consulting Physical Activity Specialist subagent",
                   { toolName: fc.name },
                 );
+              } else if (fc.name === "search_web") {
+                emit("tool_call", "Initiating Tavily live web search", {
+                  toolName: fc.name,
+                });
+              } else if (fc.name === "search_open_food_facts") {
+                emit("tool_call", "Querying Open Food Facts database", {
+                  toolName: fc.name,
+                });
               }
             }
           }

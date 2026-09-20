@@ -24,21 +24,27 @@ test('MAF Health Agent System Initialization and Tool Execution', async (t) => {
   assert.ok(system.healthAgent, 'HealthAgent instance should exist');
   assert.equal(system.healthAgent.name, 'HealthAgent');
 
-  await t.test('USDA Nutrition lookup tool scales portions properly', async () => {
-    const nutritionTool = system.tools.usdaNutritionTool;
-    assert.ok(nutritionTool, 'lookup_usda_nutrition tool must be registered');
+  await t.test('Open Food Facts tool is registered and exposes search_open_food_facts', async () => {
+    const offTool = system.tools.openFoodFactsTool;
+    assert.ok(offTool, 'search_open_food_facts tool must be registered');
+    assert.equal(offTool.name, 'search_open_food_facts');
+  });
 
-    const result = await nutritionTool.execute({
-      foodItem: 'chicken breast',
-      amount: 200,
-      unit: 'grams'
+  await t.test('Tavily Web Search tool is registered and executes queries', async () => {
+    const searchTool = system.tools.webSearchTool;
+    assert.ok(searchTool, 'search_web tool must be registered');
+    assert.equal(searchTool.name, 'search_web');
+
+    const result = await searchTool.execute({
+      query: 'Melkunie protein drink strawberry nutrition facts calories protein'
     });
 
-    assert.equal(result.foodItem, 'chicken breast');
-    assert.equal(result.protein, 62); // 31g per 100g * 2 = 62g
-    assert.equal(result.calories, 330); // 165 * 2 = 330 kcal
-    assert.equal(result.carbs, 0);
-    assert.ok(collectedSteps.length > 0, 'Steps should be emitted during tool execution');
+    assert.ok(result, 'Search result should be returned');
+    assert.equal(result.query, 'Melkunie protein drink strawberry nutrition facts calories protein');
+    if (result.results) {
+      assert.ok(Array.isArray(result.results), 'Results should be an array');
+      assert.equal(result.source, 'Tavily Live Web Search');
+    }
   });
 
   await t.test('2024 Adult Compendium MET calculation tool computes active and total burn', async () => {
