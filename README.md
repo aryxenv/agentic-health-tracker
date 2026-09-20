@@ -1,5 +1,7 @@
 # agentic health tracker
 
+first of all, yes, i use this myself, it's a great tool which is simple and just works.
+
 my published app is private, this is just the code if you want to use it for yourself but you will need to set it up for yourself. using this will ultimately give you a **public static web app URL** that you can use across devices to let the agent track your health and fitness progress.
 
 typical use is for saying what you ate or what activity you did and agent being able to log the correct values, with a nice dashboard to visualize your progress based on your profile and goals with scientifically backed math and stuff.
