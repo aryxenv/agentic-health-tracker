@@ -1,4 +1,4 @@
-# my health tracker
+# agentic health tracker
 
 my published app is private, this is just the code if you want to use it for yourself but you will need to set it up for yourself. using this will ultimately give you a **public static web app URL** that you can use across devices to let the agent track your health and fitness progress.
 
