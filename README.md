@@ -27,17 +27,17 @@ typical use is for saying what you ate or what activity you did and agent being 
 1. clone the repo
 
 ```pwsh
-git clone "https://github.com/aryxenv/my-health-tracker.git"
+git clone "https://github.com/aryxenv/agentic-health-tracker.git"
 ```
 
 2. delete the `.git` folder from the cloned repo, and delete the `.github` folder since SWA automatically makes it for you.
 
 ```pwsh
-cd my-health-tracker
+cd agentic-health-tracker
 rm -rf .git
 ```
 
-3. create repo on github called `my-health-tracker` and push the code to it
+3. create repo on github called `agentic-health-tracker` and push the code to it
 
 4. create a new repo on your github account and push the code to it
 
@@ -71,7 +71,7 @@ git push -u origin main
 }
 ```
 
-7.  on azure, create a resource group called `my-health-tracker`
+7.  on azure, create a resource group called `agentic-health-tracker`
 
 8.  open the folder with an agent of your choice and give it this prompt to set up cosmosdb, you can let this run in the background while you move onto the next step
 
@@ -82,7 +82,7 @@ git push -u origin main
 Set up Azure Cosmos DB for NoSQL for this project using my active Azure CLI login:
 
 1. **Provision Cloud Resources:**
-   - Resource Group: `my-health-tracker` (create in a preferred region like `west-europe` if it doesn't exist).
+   - Resource Group: `agentic-health-tracker` (create in a preferred region like `west-europe` if it doesn't exist).
    - Cosmos DB Account: Generate a globally unique name (e.g., `cdb-healthtracker-<randomSuffix>`). Use `--kind GlobalDocumentDB`, `--default-consistency-level Session`, and enable free tier if eligible (`--enable-free-tier true`). if not eligible for free tier, flag this for the user in the end.
    - Database: Create an SQL database named `health-tracker-db`.
    - Container: Create an SQL container named `health_tracker` with partition key `/userId` and dedicated throughput of `400` RU/s.
