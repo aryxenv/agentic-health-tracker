@@ -9,6 +9,16 @@ typical use is for saying what you ate or what activity you did and agent being 
 - **Data**: cosmosdb for nosql for persistent data storage and optimized retrievals.
 - **Github**: repo for the code, used automated ci/cd for deployment for swa and functions.
 
+## preview
+
+### chat
+
+![chat preview](./assets/chat_preview.png)
+
+### data
+
+![data preview](./assets/data_preview.png)
+
 ## quickstart
 
 1. clone the repo
@@ -88,7 +98,7 @@ Set up Azure Cosmos DB for NoSQL for this project using my active Azure CLI logi
 
 9. create a new static web app on azure portal, and link it to your github repo. make sure to select the correct branch (`main`) and folder for the build. check the configs below
 
-![swa config](./swa_config.png)
+![swa config](./assets/swa_config.png)
 
 10. review and create the swa resource and wait for like 5 mins till it's ready. you will get a public url for your swa which is basically your app url.
 
@@ -112,6 +122,6 @@ if you want to turn this into an app on your phone, you can (if you have chrome 
 
 2. click on the 3 dots on the top right corner, and select "Install and create shortcut", and select the option "Install"
 
-![install app on chrome](./install_app_on_chrome.png)
+![install app on chrome](./assets/install_app_on_chrome.png)
 
 3. now you can access the app from your home screen like a normal app, and it will open in full screen without the browser stuff.
