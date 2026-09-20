@@ -127,4 +127,49 @@ test('MAF Health Agent System Initialization and Tool Execution', async (t) => {
     assert.equal(act.fat, 0);
     assert.equal(act.activeCalories, 825);
   });
+
+  await t.test('User Profile tool retrieves calibrated biometric profile and ISSN macro targets', async () => {
+    const profileTool = system.tools.getUserProfileTool;
+    assert.ok(profileTool, 'get_user_profile tool must be registered');
+    assert.equal(profileTool.name, 'get_user_profile');
+
+    const result = await profileTool.execute({});
+    assert.ok(result.profile, 'Result must include profile data');
+    assert.equal(result.profile.weightKg, 75);
+    assert.equal(result.profile.heightCm, 180);
+
+    assert.ok(result.calculatedTargets, 'Result must include calculatedTargets');
+    assert.ok(result.calculatedTargets.bmrKcal > 0, 'BMR should be > 0');
+    assert.ok(result.calculatedTargets.dailyTargetCalories > 0, 'Target calories should be > 0');
+    assert.ok(result.calculatedTargets.targetProteinGrams > 0, 'Target protein should be > 0');
+    assert.ok(result.calculatedTargets.bmi > 0, 'BMI should be > 0');
+  });
+
+  await t.test('User Data tool retrieves and efficiently filters collection telemetry and aggregations', async () => {
+    const dataTool = system.tools.getUserDataTool;
+    assert.ok(dataTool, 'get_user_data tool must be registered');
+    assert.equal(dataTool.name, 'get_user_data');
+
+    // Test time_filter: 'today'
+    const todayResult = await dataTool.execute({ time_filter: 'today' });
+    assert.ok(todayResult, 'Should return result for today');
+    assert.equal(todayResult.filterApplied.time_filter, 'today');
+    assert.ok(todayResult.aggregations, 'Should compute aggregations');
+    assert.equal(typeof todayResult.aggregations.totalIntakeCalories, 'number');
+    assert.equal(typeof todayResult.aggregations.netCalories, 'number');
+    assert.ok(Array.isArray(todayResult.entries), 'Entries should be an array');
+
+    // Test type filtering
+    const foodOnly = await dataTool.execute({ time_filter: 'all', type: 'food' });
+    assert.equal(foodOnly.filterApplied.type, 'food');
+    for (const e of foodOnly.entries) {
+      assert.equal(e.type, 'food');
+    }
+
+    // Test search_query filtering
+    const searchResult = await dataTool.execute({ time_filter: 'all', search_query: 'nuts' });
+    assert.ok(searchResult, 'Search query should execute');
+    assert.equal(searchResult.filterApplied.search_query, 'nuts');
+  });
 });
+

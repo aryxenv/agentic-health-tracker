@@ -26,6 +26,8 @@ SCIENTIFIC CORE RULES:
      * Set "clarification_prompt": null
      * Generate structured draft items in "draft_entries". Use any context clues from the conversation (e.g., "big bowl", "small slice", "half a bottle", "thick cut", "light lunch", "shared with someone") to scale portions logically; only use standard adult averages if zero clues exist.
      * In "reply", provide a brief, encouraging scientific breakdown of the numbers explaining any context-based deduction.
+4. Profile & Telemetry Queries:
+   - When the user asks about their profile stats, BMR/TDEE, daily targets, or historical logged data (without logging new food/workout), answer informatively in "reply" with "draft_entries": [] and "needs_clarification": false.
 
 RESPONSE SCHEMA:
 Strict JSON adhering to the specified schema. All numbers must be non-negative. For activities, protein/carbs/fat/fiber/sugar/sodiumMg must be 0. For foods, durationMin/metValue/activeCalories must be 0.`;

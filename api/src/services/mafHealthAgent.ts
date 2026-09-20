@@ -9,9 +9,16 @@ import {
   ChatMessage,
   DraftEntry,
   GroqChatResponse,
+  HealthLogRecord,
   MealType,
   UserProfile,
 } from "../types/apiTypes";
+import { cosmosService } from "./cosmosService";
+import {
+  calculateMacroTargets,
+  aggregateLogs,
+  getDateRangeForFilter,
+} from "./calculations";
 
 dotenv.config();
 if (!process.env.GROQ_API_KEY || !process.env.TAVILY_API_KEY) {
@@ -672,6 +679,274 @@ export function createHealthAgentSystem(
     },
   });
 
+  // Tool 4: User Profile & Calibrated Targets Retrieval
+  const getUserProfileTool = tool({
+    name: "get_user_profile",
+    description:
+      "Retrieve the user's calibrated physical profile (weight, height, age, sex, activity level, health goal, training routine focus) and derived metabolic targets (BMR, TDEE, dynamic target calories, and ISSN macro targets: protein, fat, carbs, fiber, sugar ceiling, sodium ceiling). Use this when answering questions about the user's personal stats, goals, recommended targets, or personal calibrations.",
+    parameters: {
+      type: "object",
+      properties: {
+        userId: {
+          type: "string",
+          description:
+            "Optional user ID to retrieve profile for, defaults to 'default_user'",
+        },
+      },
+    },
+    execute: async (args: any) => {
+      emit("tool_call", "Retrieving user physical profile & targets", {
+        toolName: "get_user_profile",
+        args,
+      });
+
+      let profile = userProfile;
+      if (!profile || !profile.weightKg) {
+        try {
+          const doc = await cosmosService.getProfile(
+            args?.userId || "default_user",
+          );
+          if (doc) {
+            profile = {
+              weightKg: Number(doc.weightKg || 75),
+              heightCm: Number(doc.heightCm || 180),
+              age: Number(doc.age || 24),
+              sex: doc.sex === "female" ? "female" : "male",
+              activityLevel: doc.activityLevel || "moderate",
+              goal: doc.goal || doc.strategy || "maintain",
+              trainingFocus: doc.trainingFocus || "cardio",
+            };
+          }
+        } catch (_) {}
+      }
+
+      const activeProfile: UserProfile = {
+        weightKg: Number(profile?.weightKg || 75),
+        heightCm: Number(profile?.heightCm || 180),
+        age: Number(profile?.age || 24),
+        sex: profile?.sex === "female" ? "female" : "male",
+        activityLevel: profile?.activityLevel || "moderate",
+        goal: profile?.goal || "maintain",
+        trainingFocus: profile?.trainingFocus || "cardio",
+      };
+
+      const targets = calculateMacroTargets(activeProfile);
+
+      const result = {
+        profile: {
+          weightKg: activeProfile.weightKg,
+          heightCm: activeProfile.heightCm,
+          age: activeProfile.age,
+          sex: activeProfile.sex,
+          activityLevel: activeProfile.activityLevel,
+          goal: activeProfile.goal,
+          trainingFocus: activeProfile.trainingFocus,
+        },
+        calculatedTargets: {
+          bmrKcal: targets.bmr,
+          sedentaryTdeeKcal: targets.sedentaryTDEE,
+          activeTdeeKcal: targets.activeTDEE,
+          dailyTargetCalories: targets.targetCalories,
+          targetProteinGrams: targets.proteinGrams,
+          proteinMultiplierGPerKg: targets.proteinMultiplier,
+          targetFatGrams: targets.fatGrams,
+          targetCarbGrams: targets.carbGrams,
+          dailyFiberTargetGrams: targets.fiberGrams,
+          sugarCeilingGrams: targets.sugarMaxGrams,
+          sodiumCeilingMg: targets.sodiumMaxMg,
+          bmi: targets.bmi,
+        },
+      };
+
+      emit(
+        "tool_result",
+        `Profile retrieved: ${activeProfile.weightKg}kg, ${activeProfile.goal} goal, ${targets.targetCalories} kcal target`,
+        {
+          toolName: "get_user_profile",
+          result,
+        },
+      );
+
+      return result;
+    },
+  });
+
+  // Tool 5: Historical User Data & Collection Aggregations Retrieval
+  const getUserDataTool = tool({
+    name: "get_user_data",
+    description:
+      "Retrieve historical logged food items, exercises, and aggregated telemetry from the user's collection (as displayed on the Data tab). Supports flexible filtering by time range (today, yesterday, this_week, last_7_days, this_month, custom, all), log type (food, activity, or all), meal type, or keyword search.",
+    parameters: {
+      type: "object",
+      properties: {
+        time_filter: {
+          type: "string",
+          enum: [
+            "today",
+            "yesterday",
+            "this_week",
+            "last_7_days",
+            "this_month",
+            "custom",
+            "all",
+          ],
+          description: "Convenient time filter preset. Defaults to 'today'.",
+        },
+        start_date: {
+          type: "string",
+          description:
+            "Start date in 'YYYY-MM-DD' format (used when time_filter is 'custom' or specific date requested).",
+        },
+        end_date: {
+          type: "string",
+          description:
+            "End date in 'YYYY-MM-DD' format (optional, defaults to start_date or today).",
+        },
+        type: {
+          type: "string",
+          enum: ["all", "food", "activity"],
+          description:
+            "Filter by entry type: 'food' for nutrition logs, 'activity' for workouts/exercises, or 'all'.",
+        },
+        meal_type: {
+          type: "string",
+          enum: ["all", "breakfast", "lunch", "dinner", "snack", "workout"],
+          description: "Filter by specific meal category or 'all'.",
+        },
+        search_query: {
+          type: "string",
+          description:
+            "Optional keyword search filter (e.g. 'banana', 'running', 'shake', 'oats').",
+        },
+        include_aggregations: {
+          type: "boolean",
+          description:
+            "Whether to calculate total intake calories, active calories burned, net calories, and macronutrient sums. Defaults to true.",
+        },
+        limit: {
+          type: "number",
+          description:
+            "Maximum number of individual log entries to return. Defaults to 40.",
+        },
+        userId: {
+          type: "string",
+          description:
+            "Optional user ID to retrieve logs for, defaults to 'default_user'.",
+        },
+      },
+    },
+    execute: async (args: any) => {
+      const { startDateStr, endDateStr } = getDateRangeForFilter(
+        args?.time_filter,
+        args?.start_date,
+        args?.end_date,
+      );
+
+      emit(
+        "tool_call",
+        `Retrieving health collection data (${args?.time_filter || "today"}${startDateStr ? `: ${startDateStr}` : ""})`,
+        {
+          toolName: "get_user_data",
+          args: {
+            ...args,
+            resolvedStartDate: startDateStr,
+            resolvedEndDate: endDateStr,
+          },
+        },
+      );
+
+      let rawLogs: any[] = [];
+      try {
+        rawLogs = await cosmosService.getLogs(
+          startDateStr,
+          endDateStr,
+          args?.userId || "default_user",
+        );
+      } catch (err: any) {
+        rawLogs = [];
+      }
+
+      // Filter by type
+      let filtered = rawLogs;
+      if (args?.type && args.type !== "all") {
+        filtered = filtered.filter((r) => r.type === args.type);
+      }
+
+      // Filter by meal_type
+      if (args?.meal_type && args.meal_type !== "all") {
+        filtered = filtered.filter((r) => r.mealType === args.meal_type);
+      }
+
+      // Filter by search_query
+      if (
+        args?.search_query &&
+        typeof args.search_query === "string" &&
+        args.search_query.trim()
+      ) {
+        const query = args.search_query.toLowerCase().trim();
+        filtered = filtered.filter(
+          (r) =>
+            (r.name && String(r.name).toLowerCase().includes(query)) ||
+            (r.details && String(r.details).toLowerCase().includes(query)) ||
+            (r.servingInfo &&
+              String(r.servingInfo).toLowerCase().includes(query)),
+        );
+      }
+
+      const aggregations = aggregateLogs(filtered);
+      const limit = Number(args?.limit) || 40;
+      const entries = filtered.slice(0, limit).map((r) => ({
+        id: r.rowKey || r.id,
+        date: r.timestamp ? String(r.timestamp).slice(0, 10) : r.date,
+        time: r.timestamp ? String(r.timestamp).slice(11, 16) : undefined,
+        type: r.type,
+        name: r.name,
+        calories: r.calories,
+        protein: r.protein,
+        carbs: r.carbs,
+        fat: r.fat,
+        fiber: r.fiber,
+        sugar: r.sugar,
+        sodiumMg: r.sodiumMg,
+        mealType: r.mealType,
+        durationMin: r.durationMin,
+        metValue: r.metValue,
+        activeCalories: r.activeCalories,
+        modality: r.modality,
+        intensity: r.intensity,
+        servingInfo: r.servingInfo,
+        details: r.details,
+      }));
+
+      const summary = {
+        filterApplied: {
+          time_filter: args?.time_filter || "today",
+          startDate: startDateStr,
+          endDate: endDateStr,
+          type: args?.type || "all",
+          meal_type: args?.meal_type || "all",
+          search_query: args?.search_query || null,
+        },
+        aggregations:
+          args?.include_aggregations === false ? undefined : aggregations,
+        matchedCount: filtered.length,
+        returnedCount: entries.length,
+        entries,
+      };
+
+      emit(
+        "tool_result",
+        `Retrieved ${filtered.length} telemetry entries (${aggregations.totalIntakeCalories} kcal in, ${aggregations.totalActiveCaloriesBurned} kcal active)`,
+        {
+          toolName: "get_user_data",
+          result: summary,
+        },
+      );
+
+      return summary;
+    },
+  });
+
   // Subagent 1: Nutrition Specialist
   const nutritionSpecialist = new Agent({
     client,
@@ -688,7 +963,12 @@ Your duty:
    - Call "search_web" via Tavily with a concise query (e.g. "<food name> calories macros protein").
 4. Accurately compute portion-scaled values: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
 5. Return a clear, structured breakdown for each food item.`,
-    tools: [openFoodFactsTool, webSearchTool],
+    tools: [
+      openFoodFactsTool,
+      webSearchTool,
+      getUserProfileTool,
+      getUserDataTool,
+    ],
   });
 
   // Subagent 2: Physical Activity Specialist
@@ -774,6 +1054,23 @@ SCIENTIFIC CORE RULES:
    - First, consult specialist subagents or call lookup tools to calculate the numbers.
    - Next, call "record_health_log" with draft_entries and your reply.
    - After record_health_log returns, write a concise, encouraging scientific summary to the user as normal text and conclude.
+6. USER PROFILE & HISTORICAL COLLECTION RETRIEVAL PROTOCOL:
+   - You have 2 dedicated tools for user profile and collection retrieval:
+     * "get_user_profile": Retrieves the user's calibrated physical profile (weight, height, age, sex, activity level, health goal, training routine focus) and derived metabolic targets (BMR, TDEE, dynamic target calories, protein target & multiplier, fat, carbs, fiber, sugar ceiling, sodium ceiling).
+       - Light Guidance: Use this when the user asks about their personal stats, BMI, BMR, TDEE, daily targets, or when you need target thresholds to assess progress.
+     * "get_user_data": Retrieves logged food items, exercises, and aggregated telemetry from the user's collection (as displayed on the Data tab).
+       - Light Guidance: Use this when the user asks about their logged history or data (e.g. what they ate or did today or on a specific day), how many calories/macros they consumed so far, how much they burned, whether they already logged a specific food or workout, or remaining calorie/macro allowance.
+       - Filtering options:
+         * time_filter: 'today' (default), 'yesterday', 'this_week', 'last_7_days', 'this_month', 'custom', or 'all'.
+         * type: 'food' (nutrition only), 'activity' (workouts only), or 'all'.
+         * meal_type: 'breakfast', 'lunch', 'dinner', 'snack', 'workout', or 'all'.
+         * search_query: optional keyword filter (e.g. 'banana', 'run', 'shake').
+       - For progress / budget questions (e.g. "How much protein do I have left today?"):
+         1. Call get_user_data(time_filter: "today") to get today's consumed total.
+         2. Call get_user_profile() (or use profile context) to get daily target.
+         3. Compare and explain the remaining amount encouragingly.
+   - INFORMATION RETRIEVAL VS LOGGING:
+     * If the user is only asking for profile stats or historical logged data (without logging new food or workout), do NOT invent or create new draft entries! Call record_health_log with draft_entries: [], needs_clarification: false, and provide your helpful answer in reply.
 ${userContext}`;
 
   const healthAgent = new Agent({
@@ -781,6 +1078,8 @@ ${userContext}`;
     name: "HealthAgent",
     instructions: primaryInstructions,
     tools: [
+      getUserProfileTool,
+      getUserDataTool,
       consultNutritionTool,
       consultActivityTool,
       openFoodFactsTool,
@@ -803,6 +1102,8 @@ ${userContext}`;
       recordHealthLogTool,
       consultNutritionTool,
       consultActivityTool,
+      getUserProfileTool,
+      getUserDataTool,
     },
   };
 }
@@ -906,6 +1207,14 @@ CONTEXT INSTRUCTIONS:
                 });
               } else if (fc.name === "search_open_food_facts") {
                 emit("tool_call", "Querying Open Food Facts database", {
+                  toolName: fc.name,
+                });
+              } else if (fc.name === "get_user_profile") {
+                emit("tool_call", "Retrieving user physical profile & targets", {
+                  toolName: fc.name,
+                });
+              } else if (fc.name === "get_user_data") {
+                emit("tool_call", "Querying user logged telemetry from collection", {
                   toolName: fc.name,
                 });
               }
