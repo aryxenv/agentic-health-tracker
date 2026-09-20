@@ -1,7 +1,7 @@
-import Groq from 'groq-sdk';
-import { ChatMessage, GroqChatResponse, UserProfile } from '../types/apiTypes';
+import Groq from "groq-sdk";
+import { ChatMessage, GroqChatResponse, UserProfile } from "../types/apiTypes";
 
-const GROQ_MODEL = 'openai/gpt-oss-120b';
+const GROQ_MODEL = "openai/gpt-oss-20b";
 
 const SYSTEM_PROMPT = `You are the Health Agent: an elite, scientifically rigorous nutrition and physical activity tracking agent.
 
@@ -31,139 +31,157 @@ RESPONSE SCHEMA:
 Strict JSON adhering to the specified schema. All numbers must be non-negative. For activities, protein/carbs/fat/fiber/sugar/sodiumMg must be 0. For foods, durationMin/metValue/activeCalories must be 0.`;
 
 export const HEALTH_LOG_JSON_SCHEMA = {
-  name: 'health_log_response',
+  name: "health_log_response",
   strict: true,
   schema: {
-    type: 'object',
+    type: "object",
     properties: {
       reply: {
-        type: 'string',
-        description: 'Conversational response explaining calculations or asking clarifying questions.'
+        type: "string",
+        description:
+          "Conversational response explaining calculations or asking clarifying questions.",
       },
       needs_clarification: {
-        type: 'boolean',
-        description: 'True if key information is missing and user has not requested an estimate.'
+        type: "boolean",
+        description:
+          "True if key information is missing and user has not requested an estimate.",
       },
       clarification_prompt: {
-        type: ['string', 'null'],
-        description: 'Short summary of missing details if clarification is needed.'
+        type: ["string", "null"],
+        description:
+          "Short summary of missing details if clarification is needed.",
       },
       draft_entries: {
-        type: 'array',
-        description: 'Array of drafted items extracted from the conversation.',
+        type: "array",
+        description: "Array of drafted items extracted from the conversation.",
         items: {
-          type: 'object',
+          type: "object",
           properties: {
             type: {
-              type: 'string',
-              enum: ['food', 'activity']
+              type: "string",
+              enum: ["food", "activity"],
             },
             name: {
-              type: 'string',
-              description: 'Name of the food item or physical activity.'
+              type: "string",
+              description: "Name of the food item or physical activity.",
             },
             calories: {
-              type: 'number',
-              description: 'Calories intake for food, or total calories burned for activity.'
+              type: "number",
+              description:
+                "Calories intake for food, or total calories burned for activity.",
             },
             protein: {
-              type: 'number',
-              description: 'Protein in grams (0 for activity).'
+              type: "number",
+              description: "Protein in grams (0 for activity).",
             },
             carbs: {
-              type: 'number',
-              description: 'Total carbohydrates in grams (0 for activity).'
+              type: "number",
+              description: "Total carbohydrates in grams (0 for activity).",
             },
             fat: {
-              type: 'number',
-              description: 'Total fat in grams (0 for activity).'
+              type: "number",
+              description: "Total fat in grams (0 for activity).",
             },
             fiber: {
-              type: 'number',
-              description: 'Dietary fiber in grams (0 for activity).'
+              type: "number",
+              description: "Dietary fiber in grams (0 for activity).",
             },
             sugar: {
-              type: 'number',
-              description: 'Total sugars in grams (0 for activity).'
+              type: "number",
+              description: "Total sugars in grams (0 for activity).",
             },
             sodiumMg: {
-              type: 'number',
-              description: 'Sodium in milligrams (0 for activity).'
+              type: "number",
+              description: "Sodium in milligrams (0 for activity).",
             },
             mealType: {
-              type: 'string',
-              enum: ['breakfast', 'lunch', 'dinner', 'snack', 'workout']
+              type: "string",
+              enum: ["breakfast", "lunch", "dinner", "snack", "workout"],
             },
             durationMin: {
-              type: 'number',
-              description: 'Duration in minutes (0 for food).'
+              type: "number",
+              description: "Duration in minutes (0 for food).",
             },
             metValue: {
-              type: 'number',
-              description: 'MET value (0 for food).'
+              type: "number",
+              description: "MET value (0 for food).",
             },
             activeCalories: {
-              type: 'number',
-              description: 'Net active calories burned above resting BMR (0 for food).'
+              type: "number",
+              description:
+                "Net active calories burned above resting BMR (0 for food).",
             },
             modality: {
-              type: 'string',
-              enum: ['none', 'cardio', 'strength_training', 'hiit', 'walking', 'sports']
+              type: "string",
+              enum: [
+                "none",
+                "cardio",
+                "strength_training",
+                "hiit",
+                "walking",
+                "sports",
+              ],
             },
             intensity: {
-              type: 'string',
-              enum: ['none', 'low', 'moderate', 'vigorous', 'near_max']
+              type: "string",
+              enum: ["none", "low", "moderate", "vigorous", "near_max"],
             },
             servingInfo: {
-              type: 'string',
-              description: 'Serving size or workout details (e.g., "1.5 cups (350g)" or "45 mins moderate").'
+              type: "string",
+              description:
+                'Serving size or workout details (e.g., "1.5 cups (350g)" or "45 mins moderate").',
             },
             details: {
-              type: 'string',
-              description: 'Brief nutritional or biomechanical details.'
-            }
+              type: "string",
+              description: "Brief nutritional or biomechanical details.",
+            },
           },
           required: [
-            'type',
-            'name',
-            'calories',
-            'protein',
-            'carbs',
-            'fat',
-            'fiber',
-            'sugar',
-            'sodiumMg',
-            'mealType',
-            'durationMin',
-            'metValue',
-            'activeCalories',
-            'modality',
-            'intensity',
-            'servingInfo',
-            'details'
+            "type",
+            "name",
+            "calories",
+            "protein",
+            "carbs",
+            "fat",
+            "fiber",
+            "sugar",
+            "sodiumMg",
+            "mealType",
+            "durationMin",
+            "metValue",
+            "activeCalories",
+            "modality",
+            "intensity",
+            "servingInfo",
+            "details",
           ],
-          additionalProperties: false
-        }
-      }
+          additionalProperties: false,
+        },
+      },
     },
-    required: ['reply', 'needs_clarification', 'clarification_prompt', 'draft_entries'],
-    additionalProperties: false
-  }
+    required: [
+      "reply",
+      "needs_clarification",
+      "clarification_prompt",
+      "draft_entries",
+    ],
+    additionalProperties: false,
+  },
 };
 
 export async function processChatConversation(
   messages: ChatMessage[],
-  userProfile?: UserProfile
+  userProfile?: UserProfile,
 ): Promise<GroqChatResponse> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    throw new Error('GROQ_API_KEY environment variable is not configured');
+    throw new Error("GROQ_API_KEY environment variable is not configured");
   }
 
   const groq = new Groq({ apiKey });
 
   // Build context with user profile
-  let userContext = '';
+  let userContext = "";
   if (userProfile) {
     userContext = `\nUSER PROFILE CONTEXT:
 - Weight: ${userProfile.weightKg} kg
@@ -175,11 +193,14 @@ export async function processChatConversation(
   }
 
   const groqMessages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT + userContext },
+    { role: "system" as const, content: SYSTEM_PROMPT + userContext },
     ...messages.map((m) => ({
-      role: (m.role === 'health_agent' ? 'assistant' : m.role) as 'system' | 'user' | 'assistant',
-      content: m.content
-    }))
+      role: (m.role === "health_agent" ? "assistant" : m.role) as
+        | "system"
+        | "user"
+        | "assistant",
+      content: m.content,
+    })),
   ];
 
   const response = await groq.chat.completions.create({
@@ -187,20 +208,22 @@ export async function processChatConversation(
     messages: groqMessages,
     temperature: 0.2,
     response_format: {
-      type: 'json_schema',
-      json_schema: HEALTH_LOG_JSON_SCHEMA
-    } as any
+      type: "json_schema",
+      json_schema: HEALTH_LOG_JSON_SCHEMA,
+    } as any,
   });
 
   const rawContent = response.choices[0]?.message?.content;
   if (!rawContent) {
-    throw new Error('Empty response received from Groq model');
+    throw new Error("Empty response received from Groq model");
   }
 
   try {
     const parsed: GroqChatResponse = JSON.parse(rawContent);
     return parsed;
   } catch (err: any) {
-    throw new Error(`Failed to parse Groq structured response: ${err.message}. Content: ${rawContent}`);
+    throw new Error(
+      `Failed to parse Groq structured response: ${err.message}. Content: ${rawContent}`,
+    );
   }
 }

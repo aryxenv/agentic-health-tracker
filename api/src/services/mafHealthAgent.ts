@@ -20,7 +20,7 @@ if (!process.env.GROQ_API_KEY) {
   dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 }
 
-const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
 // Standard USDA Reference Densities (per 100g or typical unit)
 const USDA_NUTRITION_REFERENCE: Record<
@@ -929,7 +929,11 @@ CONTEXT INSTRUCTIONS:
             }
           }
         }
-        if (!deltaEmitted && (update as any).text && typeof (update as any).text === "string") {
+        if (
+          !deltaEmitted &&
+          (update as any).text &&
+          typeof (update as any).text === "string"
+        ) {
           onDelta?.((update as any).text);
         }
       }
