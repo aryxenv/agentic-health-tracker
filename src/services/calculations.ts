@@ -1,4 +1,14 @@
-import type { DailyAggregations, HealthLogRecord, MacroTargets, UserProfile } from '../types/health';
+import type { DailyAggregations, HealthLogRecord, MacroTargets, TrainingFocus, UserProfile } from '../types/health';
+
+/**
+ * Multiplier dictionary (g protein per kg body weight) based on ISSN guidelines and training focus.
+ */
+export const PROTEIN_MULTIPLIERS: Record<TrainingFocus, number> = {
+  cardio: 1.3,
+  balanced: 1.5,
+  strength: 1.8,
+  athletic_cut: 2.2
+};
 
 /**
  * Calculates Basal Metabolic Rate (BMR) using the Mifflin-St Jeor equation.
@@ -42,8 +52,11 @@ export function calculateMacroTargets(profile: UserProfile): MacroTargets {
   const minFloor = profile.sex === 'male' ? 1500 : 1200;
   const targetCalories = Math.max(minFloor, sedentaryTDEE + delta);
 
-  // ISSN Protein Standard: 1.8g per kg body weight
-  const proteinGrams = Math.round(1.8 * profile.weightKg);
+  // ISSN Protein Standard: Determined by training focus routine (defaults to 1.8 if unspecified)
+  const proteinMultiplier = profile.trainingFocus
+    ? (PROTEIN_MULTIPLIERS[profile.trainingFocus] ?? 1.8)
+    : 1.8;
+  const proteinGrams = Math.round(proteinMultiplier * profile.weightKg);
   const proteinKcal = proteinGrams * 4;
 
   // Healthy Fat: 25% of target calories (minimum 0.6g per kg)
@@ -69,6 +82,7 @@ export function calculateMacroTargets(profile: UserProfile): MacroTargets {
     tdee: calculateTDEE(profile),
     targetCalories,
     proteinGrams,
+    proteinMultiplier,
     fatGrams,
     carbGrams,
     fiberGrams,

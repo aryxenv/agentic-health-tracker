@@ -1,3 +1,5 @@
+export type TrainingFocus = 'cardio' | 'balanced' | 'strength' | 'athletic_cut';
+
 export interface UserProfile {
   weightKg: number;
   heightCm: number;
@@ -5,6 +7,7 @@ export interface UserProfile {
   sex: 'male' | 'female';
   activityLevel: 'sedentary' | 'light' | 'moderate' | 'very_active';
   goal: 'cut' | 'maintain' | 'bulk';
+  trainingFocus?: TrainingFocus;
 }
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'workout';
@@ -74,6 +77,7 @@ export interface MacroTargets {
   tdee: number;
   targetCalories: number;
   proteinGrams: number;
+  proteinMultiplier: number;
   fatGrams: number;
   carbGrams: number;
   fiberGrams: number;
@@ -102,7 +106,8 @@ export const DEFAULT_PROFILE: UserProfile = {
   age: 24,
   sex: 'male',
   activityLevel: 'moderate',
-  goal: 'maintain'
+  goal: 'maintain',
+  trainingFocus: 'cardio'
 };
 
 export const MEAL_TYPES: readonly MealType[] = ['breakfast', 'lunch', 'dinner', 'snack', 'workout'] as const;

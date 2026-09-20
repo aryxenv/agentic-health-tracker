@@ -20,6 +20,13 @@ function calculateTDEE(profile) {
   return Math.round(bmr * multiplier);
 }
 
+const PROTEIN_MULTIPLIERS = {
+  cardio: 1.3,
+  balanced: 1.5,
+  strength: 1.8,
+  athletic_cut: 2.2
+};
+
 function calculateMacroTargets(profile) {
   const bmr = calculateBMR(profile);
   const sedentaryTDEE = Math.round(bmr * 1.2);
@@ -34,7 +41,10 @@ function calculateMacroTargets(profile) {
   const minFloor = profile.sex === 'male' ? 1500 : 1200;
   const targetCalories = Math.max(minFloor, sedentaryTDEE + delta);
 
-  const proteinGrams = Math.round(1.8 * profile.weightKg);
+  const proteinMultiplier = profile.trainingFocus
+    ? (PROTEIN_MULTIPLIERS[profile.trainingFocus] ?? 1.8)
+    : 1.8;
+  const proteinGrams = Math.round(proteinMultiplier * profile.weightKg);
   const proteinKcal = proteinGrams * 4;
 
   const fatKcal = Math.round(targetCalories * 0.25);
@@ -52,6 +62,7 @@ function calculateMacroTargets(profile) {
     tdee: calculateTDEE(profile),
     targetCalories,
     proteinGrams,
+    proteinMultiplier,
     fatGrams,
     carbGrams,
     fiberGrams,
@@ -139,6 +150,25 @@ test('Dynamic Net Targets: Cut, Maintain, Bulk', () => {
 
   const bulk = calculateMacroTargets({ ...profile, goal: 'bulk' });
   assert.strictEqual(bulk.targetCalories, 2412);
+
+  // Training Focus routine presets testing
+  const cardio = calculateMacroTargets({ ...profile, trainingFocus: 'cardio' });
+  assert.strictEqual(cardio.proteinMultiplier, 1.3);
+  assert.strictEqual(cardio.proteinGrams, Math.round(1.3 * 75)); // 98g
+  // Carbs should be higher because protein is lower:
+  assert.ok(cardio.carbGrams > maintain.carbGrams);
+
+  const balanced = calculateMacroTargets({ ...profile, trainingFocus: 'balanced' });
+  assert.strictEqual(balanced.proteinMultiplier, 1.5);
+  assert.strictEqual(balanced.proteinGrams, Math.round(1.5 * 75)); // 113g
+
+  const strength = calculateMacroTargets({ ...profile, trainingFocus: 'strength' });
+  assert.strictEqual(strength.proteinMultiplier, 1.8);
+  assert.strictEqual(strength.proteinGrams, 135);
+
+  const athleticCut = calculateMacroTargets({ ...profile, trainingFocus: 'athletic_cut' });
+  assert.strictEqual(athleticCut.proteinMultiplier, 2.2);
+  assert.strictEqual(athleticCut.proteinGrams, Math.round(2.2 * 75)); // 165g
 });
 
 test('Active MET Burn Formula vs Total Burn (No double counting)', () => {
