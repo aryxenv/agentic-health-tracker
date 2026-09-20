@@ -4,7 +4,7 @@ my published app is private, this is just the code if you want to use it for you
 
 typical use is for saying what you ate or what activity you did and agent being able to log the correct values, with a nice dashboard to visualize your progress based on your profile and goals with scientifically backed math and stuff.
 
-- **AI**: uses a MAF (Microsoft Agent Framework) agent with model from Groq API (openai/gpt-oss-20b), which has subagents and tools for delegating specific agentic tasks based on user request.
+- **AI**: uses a MAF (Microsoft Agent Framework) agent with model from Groq API (openai/gpt-oss-120b), which has subagents and tools for delegating specific agentic tasks based on user request.
 - **App**: deployed on SWA (static web app) with managed functions.
 - **Data**: cosmosdb for nosql for persistent data storage and optimized retrievals.
 - **Github**: repo for the code, used automated ci/cd for deployment for swa and functions.

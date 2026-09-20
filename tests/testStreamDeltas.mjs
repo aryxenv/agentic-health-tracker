@@ -6,7 +6,7 @@ const localSettings = JSON.parse(
   fs.readFileSync("./api/local.settings.json", "utf-8"),
 );
 process.env.GROQ_API_KEY = localSettings.Values.GROQ_API_KEY;
-process.env.GROQ_MODEL = "openai/gpt-oss-20b";
+process.env.GROQ_MODEL = "openai/gpt-oss-120b";
 
 const { runHealthAgentStream } =
   await import("../api/dist/src/services/mafHealthAgent.js");

@@ -1,7 +1,7 @@
 import Groq from "groq-sdk";
 import { ChatMessage, GroqChatResponse, UserProfile } from "../types/apiTypes";
 
-const GROQ_MODEL = "openai/gpt-oss-20b";
+const GROQ_MODEL = "openai/gpt-oss-120b";
 
 const SYSTEM_PROMPT = `You are the Health Agent: an elite, scientifically rigorous nutrition and physical activity tracking agent.
 
