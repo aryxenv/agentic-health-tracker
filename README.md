@@ -10,7 +10,7 @@ typical use is for saying what you ate or what activity you did and agent being 
 - **Github**: repo for the code, used automated ci/cd for deployment for swa and functions.
 
 > [!TIP]
-> deploying, running and using this app is completely free (if using cosmosdb free tier)
+> deploying, running and using this app is completely free through azure (if using cosmosdb free tier)
 
 ## preview
 
