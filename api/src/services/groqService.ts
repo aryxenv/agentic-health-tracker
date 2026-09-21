@@ -174,6 +174,7 @@ export const HEALTH_LOG_JSON_SCHEMA = {
 export async function processChatConversation(
   messages: ChatMessage[],
   userProfile?: UserProfile,
+  model?: string,
 ): Promise<GroqChatResponse> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
@@ -206,8 +207,10 @@ export async function processChatConversation(
     })),
   ];
 
+  const effectiveModel = model || process.env.GROQ_MODEL || GROQ_MODEL;
+
   const response = await groq.chat.completions.create({
-    model: GROQ_MODEL,
+    model: effectiveModel,
     messages: groqMessages,
     temperature: 0.2,
     response_format: {

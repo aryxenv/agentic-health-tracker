@@ -30,7 +30,8 @@ export async function sendChatMessageStream(
   userProfile?: UserProfile,
   onStep?: (step: AgenticStep) => void,
   onDelta?: (delta: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  model?: string
 ): Promise<ChatResponse & { steps?: AgenticStep[] }> {
   const response = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
@@ -42,7 +43,8 @@ export async function sendChatMessageStream(
     body: JSON.stringify({
       messages,
       userProfile,
-      stream: true
+      stream: true,
+      model
     })
   });
 
@@ -115,7 +117,8 @@ export async function sendChatMessageStream(
 
 export async function sendChatMessage(
   messages: { role: string; content: string }[],
-  userProfile?: UserProfile
+  userProfile?: UserProfile,
+  model?: string
 ): Promise<ChatResponse> {
   const response = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
@@ -124,7 +127,8 @@ export async function sendChatMessage(
     },
     body: JSON.stringify({
       messages,
-      userProfile
+      userProfile,
+      model
     })
   });
 

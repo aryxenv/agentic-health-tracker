@@ -1,18 +1,33 @@
-import { ChevronDown, ChevronRight, Loader2, Send, Square } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  RotateCw,
+  Send,
+  Square,
+} from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { saveLogEntries, sendChatMessageStream } from "../../services/api";
 import {
+  getSelectedModel,
   getStoredChatMessages,
+  saveSelectedModel,
   saveStoredChatMessages,
 } from "../../services/storage";
-import type {
-  AgenticStep,
-  ChatMessage,
-  DraftEntry,
-  UserProfile,
+import {
+  AVAILABLE_MODELS,
+  DEFAULT_MODEL_ID,
+  type AgenticStep,
+  type ChatMessage,
+  type DraftEntry,
+  type ModelId,
+  type ModelOption,
+  type UserProfile,
 } from "../../types/health";
 import { DraftCard } from "./DraftCard";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { ModelSelector, ProviderIcon } from "./ModelSelector";
 
 interface ChatTabProps {
   userProfile: UserProfile;
@@ -28,6 +43,21 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     getStoredChatMessages(),
   );
+  const [selectedModel, setSelectedModel] = useState<ModelId>(
+    () => getSelectedModel() as ModelId,
+  );
+
+  const handleModelChange = (modelId: ModelId) => {
+    setSelectedModel(modelId);
+    saveSelectedModel(modelId);
+  };
+
+  const getNextModel = (currentId: string): ModelId => {
+    const currentIndex = AVAILABLE_MODELS.findIndex((m) => m.id === currentId);
+    if (currentIndex === -1) return AVAILABLE_MODELS[0].id;
+    const nextIndex = (currentIndex + 1) % AVAILABLE_MODELS.length;
+    return AVAILABLE_MODELS[nextIndex].id;
+  };
 
   useEffect(() => {
     saveStoredChatMessages(messages);
@@ -143,25 +173,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
     }
   };
 
-  const handleSend = async (customText?: string) => {
-    const textToSend = (customText !== undefined ? customText : input).trim();
-    if (!textToSend || loading) return;
-
-    const userMsgId = `user_${Date.now()}`;
-    const userMessage: ChatMessage = {
-      id: userMsgId,
-      sender: "user",
-      text: textToSend,
-      timestamp: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    if (!customText) {
-      setInput("");
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-      }
-    }
+  const executeChat = async (history: ChatMessage[], modelToUse: ModelId) => {
     setLoading(true);
     setLiveSteps([]);
     setStreamingText("");
@@ -171,7 +183,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
     abortControllerRef.current = controller;
 
     try {
-      const conversationHistory = [...messages, userMessage].map((m) => ({
+      const conversationHistory = history.map((m) => ({
         role: m.sender === "user" ? "user" : "health_agent",
         content: m.text,
       }));
@@ -187,6 +199,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
           setStreamingText((prev) => prev + delta);
         },
         controller.signal,
+        modelToUse,
       );
 
       const agentMsgId = `agent_${Date.now()}`;
@@ -226,13 +239,24 @@ export const ChatTab: React.FC<ChatTabProps> = ({
         ]);
       } else {
         console.error("Chat error with Health Agent:", err);
+        const errMsg = err.message || "API connection failed.";
+        const isRateLimit =
+          err?.status === 429 ||
+          err?.statusCode === 429 ||
+          errMsg.includes("429") ||
+          errMsg.toLowerCase().includes("rate limit") ||
+          errMsg.toLowerCase().includes("tokens per day") ||
+          errMsg.includes("TPD");
+
         setMessages((prev) => [
           ...prev,
           {
             id: `err_${Date.now()}`,
             sender: "health_agent",
-            text: `Telemetry error: ${err.message || "API connection failed."}`,
+            text: `Telemetry error: ${errMsg}`,
             timestamp: new Date().toISOString(),
+            isRateLimit,
+            failedModel: modelToUse,
           },
         ]);
       }
@@ -243,6 +267,46 @@ export const ChatTab: React.FC<ChatTabProps> = ({
       setStreamingText("");
       streamingTextRef.current = "";
     }
+  };
+
+  const handleSend = async (customText?: string) => {
+    const textToSend = (customText !== undefined ? customText : input).trim();
+    if (!textToSend || loading) return;
+
+    const userMsgId = `user_${Date.now()}`;
+    const userMessage: ChatMessage = {
+      id: userMsgId,
+      sender: "user",
+      text: textToSend,
+      timestamp: new Date().toISOString(),
+    };
+
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    if (!customText) {
+      setInput("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+    }
+
+    await executeChat(nextMessages, selectedModel);
+  };
+
+  const handleRetryRateLimit = async (
+    errorMsgId: string,
+    failedModelId?: string,
+  ) => {
+    if (loading) return;
+
+    const nextModel = getNextModel(failedModelId || selectedModel);
+    handleModelChange(nextModel);
+
+    // Remove the error message from history to retry cleanly
+    const cleaned = messages.filter((m) => m.id !== errorMsgId);
+    setMessages(cleaned);
+
+    await executeChat(cleaned, nextModel);
   };
 
   const handleConfirmDraft = async (
@@ -347,6 +411,48 @@ export const ChatTab: React.FC<ChatTabProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Rate Limit Alert & Auto-Switch Try Again */}
+                {msg.isRateLimit && (
+                  <div className="mt-2.5 pt-2.5 border-t border-[rgba(255,255,255,0.15)]">
+                    <div className="flex items-center space-x-1.5 text-[0.855rem] text-amber-400 font-medium">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                      <span>
+                        Rate limit reached for{" "}
+                        {AVAILABLE_MODELS.find((m) => m.id === msg.failedModel)?.name ||
+                          msg.failedModel ||
+                          "model"}
+                      </span>
+                    </div>
+                    <p className="text-[0.76rem] text-white/50 mt-1 leading-snug">
+                      Provider capacity reached. Retry immediately with another model with full context preserved.
+                    </p>
+                    {(() => {
+                      const nextModelId = getNextModel(
+                        msg.failedModel || selectedModel,
+                      );
+                      const nextModelOpt =
+                        AVAILABLE_MODELS.find((m) => m.id === nextModelId) ||
+                        AVAILABLE_MODELS[0];
+                      return (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleRetryRateLimit(msg.id, msg.failedModel)
+                          }
+                          disabled={loading}
+                          className="mt-2.5 inline-flex items-center space-x-2 px-3 py-1.5 rounded-[5px] border border-[rgba(255,255,255,0.5)] hover:border-white text-white text-[0.855rem] font-normal transition-colors duration-300 cursor-pointer disabled:opacity-20 group bg-transparent hover:bg-white/5"
+                        >
+                          <RotateCw className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-300 text-white" />
+                          <span>Try Again with {nextModelOpt.name}</span>
+                          <span className="w-5 h-5 flex items-center justify-center">
+                            <ProviderIcon provider={nextModelOpt.provider} />
+                          </span>
+                        </button>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
 
               {/* Confirmation Card if draft entries exist */}
@@ -445,28 +551,36 @@ export const ChatTab: React.FC<ChatTabProps> = ({
             placeholder="Log food or exercise (e.g. '1 bowl oatmeal')..."
             disabled={loading}
             style={{ fieldSizing: "content" } as React.CSSProperties}
-            className="auto-expand w-full bg-transparent pl-3 pr-10 py-2.5 text-[0.95rem] text-white placeholder-white/30 focus:outline-none resize-none min-h-[44px] max-h-[160px] overflow-y-auto leading-[1.5] block no-scrollbar"
+            className="auto-expand w-full bg-transparent pl-3 pr-20 py-2.5 text-[0.95rem] text-white placeholder-white/30 focus:outline-none resize-none min-h-[44px] max-h-[160px] overflow-y-auto leading-[1.5] block no-scrollbar"
           />
-          {loading ? (
-            <button
-              type="button"
-              onClick={handleStop}
-              aria-label="Stop response"
-              title="Stop response"
-              className="absolute right-2 bottom-2.5 p-1.5 text-white opacity-80 hover:opacity-100 transition-opacity duration-300 flex items-center justify-center cursor-pointer"
-            >
-              <Square className="w-3.5 h-3.5 fill-current text-white" />
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={!input.trim()}
-              aria-label="Send telemetry"
-              className="absolute right-2 bottom-2.5 p-1.5 text-white opacity-50 hover:opacity-100 disabled:opacity-20 transition-opacity duration-300 cursor-pointer"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          )}
+          <div className="absolute right-2 bottom-2 flex items-center space-x-1">
+            <ModelSelector
+              selectedModelId={selectedModel}
+              onSelectModel={handleModelChange}
+              disabled={loading}
+            />
+
+            {loading ? (
+              <button
+                type="button"
+                onClick={handleStop}
+                aria-label="Stop response"
+                title="Stop response"
+                className="w-7 h-7 text-white opacity-80 hover:opacity-100 transition-opacity duration-300 flex items-center justify-center cursor-pointer"
+              >
+                <Square className="w-3.5 h-3.5 fill-current text-white" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                aria-label="Send telemetry"
+                className="w-7 h-7 text-white opacity-50 hover:opacity-100 disabled:opacity-20 transition-opacity duration-300 cursor-pointer flex items-center justify-center"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </div>

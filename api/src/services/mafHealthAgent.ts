@@ -101,6 +101,7 @@ export class GroqChatClient extends OpenAIChatClient {
 export function createHealthAgentSystem(
   userProfile?: UserProfile,
   onStep?: StepEmitter,
+  model?: string,
 ) {
   const emit = (
     type: AgenticStep["type"],
@@ -123,11 +124,13 @@ export function createHealthAgentSystem(
     throw new Error("GROQ_API_KEY environment variable is not configured");
   }
 
+  const effectiveModel = model || GROQ_MODEL;
+
   // Create OpenAI-compatible client for Groq API with reasoning bypass
   const client = new GroqChatClient({
     apiKey,
     baseURL: "https://api.groq.com/openai/v1",
-    model: GROQ_MODEL,
+    model: effectiveModel,
     includeReasoningEncryptedContent: false,
   });
 
@@ -1346,9 +1349,10 @@ export async function runHealthAgentStream(
   userProfile?: UserProfile,
   onStep?: StepEmitter,
   onDelta?: (delta: string) => void,
+  model?: string,
 ): Promise<GroqChatResponse> {
   const { healthAgent, emit, agentRunState, sanitizeDraftEntries } =
-    createHealthAgentSystem(userProfile, onStep);
+    createHealthAgentSystem(userProfile, onStep, model);
 
   // Extract latest user query and previous messages
   const userMessages = messages.filter((m) => m.role === "user");
@@ -1516,7 +1520,11 @@ CONTEXT INSTRUCTIONS:
         err?.message?.includes("429") ||
         err?.message?.toLowerCase().includes("rate limit");
 
-      if (isRateLimit && attempt < maxRetries) {
+      const isDailyLimit =
+        err?.message?.toLowerCase().includes("tokens per day") ||
+        err?.message?.includes("TPD");
+
+      if (isRateLimit && !isDailyLimit && attempt < maxRetries) {
         let waitMs = (attempt + 1) * 3000;
         const retryAfterHeader =
           err?.headers?.["retry-after"] ||
@@ -1532,6 +1540,15 @@ CONTEXT INSTRUCTIONS:
             waitMs = Math.ceil(parseFloat(match[1]) * 1000) + 750;
           }
         }
+
+        // If wait time is excessive (e.g. minutes), do not block with retry loop
+        if (waitMs > 30000) {
+          emit("thought", `Rate limit wait excessive (${(waitMs / 1000).toFixed(0)}s)`, {
+            thought: "Throwing rate limit immediately to allow alternative model selection.",
+          });
+          throw err;
+        }
+
         waitMs = Math.min(Math.max(waitMs, 2000), 16000);
 
         emit("thought", "Deliberation rate limit backoff", {

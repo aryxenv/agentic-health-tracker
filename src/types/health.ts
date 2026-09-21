@@ -70,7 +70,49 @@ export interface ChatMessage {
   draftEntries?: DraftEntry[];
   agenticSteps?: AgenticStep[];
   isConfirmed?: boolean;
+  isRateLimit?: boolean;
+  failedModel?: string;
 }
+
+export type ModelId = 'openai/gpt-oss-120b' | 'openai/gpt-oss-20b' | 'qwen/qwen3.8-27b';
+
+export interface ModelOption {
+  id: ModelId;
+  name: string;
+  provider: 'openai' | 'qwen';
+  shortName: string;
+  description: string;
+  badge?: string;
+}
+
+export const DEFAULT_MODEL_ID: ModelId = 'openai/gpt-oss-120b';
+
+export const AVAILABLE_MODELS: readonly ModelOption[] = [
+  {
+    id: 'openai/gpt-oss-120b',
+    name: 'GPT OSS 120B',
+    provider: 'openai',
+    shortName: '120B',
+    description: 'Flagship reasoning model for complex queries & research',
+    badge: 'Default',
+  },
+  {
+    id: 'openai/gpt-oss-20b',
+    name: 'GPT OSS 20B',
+    provider: 'openai',
+    shortName: '20B',
+    description: 'Ultra-fast & lightweight reasoning model',
+    badge: 'Fast',
+  },
+  {
+    id: 'qwen/qwen3.8-27b',
+    name: 'Qwen 3.8 27B',
+    provider: 'qwen',
+    shortName: 'Qwen 27B',
+    description: 'High efficiency 27B multilingual model',
+    badge: 'Balanced',
+  },
+] as const;
 
 export interface MacroTargets {
   bmr: number;

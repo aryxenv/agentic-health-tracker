@@ -27,6 +27,7 @@ export async function chatHandler(
       messages?: ChatMessage[];
       userProfile?: UserProfile;
       stream?: boolean;
+      model?: string;
     };
 
     if (!body || !body.messages || !Array.isArray(body.messages)) {
@@ -67,7 +68,8 @@ export async function chatHandler(
               },
               (delta) => {
                 sendEvent('delta', { delta });
-              }
+              },
+              body.model
             );
 
             sendEvent('message', response);
@@ -78,7 +80,8 @@ export async function chatHandler(
               // Graceful fallback to groqService if MAF encountered an unexpected runtime issue
               const fallbackResponse = await processChatConversation(
                 body.messages!,
-                body.userProfile
+                body.userProfile,
+                body.model
               );
               sendEvent('message', fallbackResponse);
               sendEvent('done', {});
@@ -113,7 +116,9 @@ export async function chatHandler(
       const response = await runHealthAgentStream(
         body.messages,
         body.userProfile,
-        (step) => steps.push(step)
+        (step) => steps.push(step),
+        undefined,
+        body.model
       );
 
       return {
@@ -123,7 +128,7 @@ export async function chatHandler(
       };
     } catch (agentErr: any) {
       context.warn('MAF Health Agent encountered error, falling back to groqService:', agentErr);
-      const fallbackResponse = await processChatConversation(body.messages, body.userProfile);
+      const fallbackResponse = await processChatConversation(body.messages, body.userProfile, body.model);
       return {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

@@ -87,3 +87,32 @@ export function clearStoredChatMessages(): void {
     console.error("Failed to clear chat messages from localStorage:", err);
   }
 }
+
+const MODEL_STORAGE_KEY = "health_tracker_selected_model";
+
+export function getSelectedModel(): string {
+  if (typeof window === "undefined") return "openai/gpt-oss-120b";
+  try {
+    const stored = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (
+      stored === "openai/gpt-oss-120b" ||
+      stored === "openai/gpt-oss-20b" ||
+      stored === "qwen/qwen3.8-27b"
+    ) {
+      return stored;
+    }
+    return "openai/gpt-oss-120b";
+  } catch (_) {
+    return "openai/gpt-oss-120b";
+  }
+}
+
+export function saveSelectedModel(model: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(MODEL_STORAGE_KEY, model);
+  } catch (err) {
+    console.error("Failed to save selected model to localStorage:", err);
+  }
+}
+
