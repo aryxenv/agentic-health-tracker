@@ -263,6 +263,7 @@ export function createHealthAgentSystem(
 
     if (!tavilyKey) {
       const errorResult = {
+        query,
         found: false,
         error: "TAVILY_API_KEY is not configured.",
         message:
@@ -315,6 +316,7 @@ export function createHealthAgentSystem(
       return result;
     } catch (err: any) {
       const errorResult = {
+        query,
         found: false,
         error: err.message,
         message: `Web search error for "${query}": ${err.message}`,
@@ -480,33 +482,194 @@ export function createHealthAgentSystem(
   };
 
   const sanitizeDraftEntries = (entries: any[]): DraftEntry[] => {
+    const userWeight = userProfile?.weightKg || 70;
+
     return entries.map((e: any) => {
+      const isExplicitActivity =
+        e.type === "activity" ||
+        e.type === "exercise" ||
+        e.type === "workout";
+      const isExplicitFood = e.type === "food";
+
+      const hasActivityClues = Boolean(
+        e.activityName ||
+          e.activity_name ||
+          e.exercise ||
+          e.workout ||
+          e.durationMin ||
+          e.duration_min ||
+          e.durationMinutes ||
+          e.duration_minutes ||
+          e.duration ||
+          e.metValue ||
+          e.met_value ||
+          e.met ||
+          e.MET ||
+          e.activeCalories ||
+          e.active_calories ||
+          e.net_active_calories ||
+          e.distanceKm ||
+          e.distance_km ||
+          e.distance,
+      );
+
       const isFood =
-        e.type === "food" ||
-        (!e.type &&
-          !e.activityName &&
-          !e.modality &&
-          !e.durationMin &&
-          !e.durationMinutes);
-      const name = String(
+        isExplicitFood || (!isExplicitActivity && !hasActivityClues);
+
+      // Name resolution
+      let name = String(
         e.name ||
-          e.food ||
-          e.foodItem ||
           e.activityName ||
-          e.activity ||
+          e.activity_name ||
+          e.food ||
+          e.food_name ||
+          e.foodItem ||
+          e.food_item ||
+          e.exercise ||
+          e.workout ||
+          e.item ||
+          e.item_name ||
+          e.dish ||
+          e.product_name ||
           (isFood ? "Food item" : "Exercise session"),
+      ).trim();
+
+      // Duration resolution (activity)
+      const durationMin = isFood
+        ? 0
+        : Math.max(
+            1,
+            Math.round(
+              Number(
+                e.durationMin ??
+                  e.duration_min ??
+                  e.durationMinutes ??
+                  e.duration_minutes ??
+                  e.duration ??
+                  e.time_min ??
+                  e.time_minutes,
+              ) || 30,
+            ),
+          );
+
+      // Modality & Intensity resolution
+      const rawIntensity = String(e.intensity || e.effort || "").toLowerCase();
+      const intensity: ActivityIntensity = isFood
+        ? "none"
+        : ["low", "moderate", "vigorous", "near_max"].includes(rawIntensity)
+          ? (rawIntensity as ActivityIntensity)
+          : "moderate";
+
+      const rawModality = String(e.modality || e.category || "").toLowerCase();
+      const modality: ActivityModality = isFood
+        ? "none"
+        : [
+            "cardio",
+            "strength_training",
+            "hiit",
+            "walking",
+            "sports",
+          ].includes(rawModality)
+          ? (rawModality as ActivityModality)
+          : "cardio";
+
+      // MET Value resolution
+      const rawMet = Number(e.metValue ?? e.met_value ?? e.met ?? e.MET);
+      let metValue = 0;
+      if (!isFood) {
+        if (!isNaN(rawMet) && rawMet > 0) {
+          metValue = Number(rawMet.toFixed(1));
+        } else {
+          // Attempt lookup in MET_REFERENCE_TABLE by matching name
+          const lowerName = name.toLowerCase();
+          const match = Object.entries(MET_REFERENCE_TABLE).find(
+            ([key]) => lowerName.includes(key) || key.includes(lowerName),
+          );
+          if (match) {
+            let base = match[1].baseMet;
+            if (intensity === "vigorous") base *= 1.25;
+            if (intensity === "near_max") base *= 1.5;
+            if (intensity === "low") base *= 0.75;
+            metValue = Number(base.toFixed(1));
+          } else {
+            metValue = 4.0;
+          }
+        }
+      }
+
+      // Calories & Active Calories resolution
+      const durationHours = durationMin / 60;
+      const restingKcal = Math.round(1 * userWeight * durationHours);
+
+      // Extract any provided total calories
+      const parsedTotalCalories = Number(
+        e.calories ??
+          e.totalCalories ??
+          e.total_calories ??
+          e.total_calories_burned ??
+          e.totalCaloriesBurned ??
+          e.caloriesBurned ??
+          e.calories_burned ??
+          e.calories_kcal ??
+          e.kcal ??
+          e.energy_kcal ??
+          e.burn,
       );
-      const calories = Math.max(
-        0,
-        Math.round(
-          Number(
-            e.calories ??
-              e.calories_kcal ??
-              e.totalCalories ??
-              e.activeCalories,
-          ) || 0,
-        ),
+
+      // Extract any provided active calories
+      const parsedActiveCalories = Number(
+        e.activeCalories ??
+          e.active_calories ??
+          e.netActiveCalories ??
+          e.net_active_calories ??
+          e.active_burn ??
+          e.net_active_burn,
       );
+
+      let totalCalories = 0;
+      let activeCalories = 0;
+
+      if (isFood) {
+        totalCalories = Math.max(0, Math.round(parsedTotalCalories || 0));
+        activeCalories = 0;
+      } else {
+        const hasValidTotal =
+          !isNaN(parsedTotalCalories) && parsedTotalCalories > 0;
+        const hasValidActive =
+          !isNaN(parsedActiveCalories) && parsedActiveCalories > 0;
+
+        if (hasValidTotal && hasValidActive) {
+          totalCalories = Math.round(parsedTotalCalories);
+          activeCalories = Math.round(parsedActiveCalories);
+        } else if (hasValidTotal && !hasValidActive) {
+          totalCalories = Math.round(parsedTotalCalories);
+          activeCalories = Math.max(0, totalCalories - restingKcal);
+        } else if (!hasValidTotal && hasValidActive) {
+          activeCalories = Math.round(parsedActiveCalories);
+          totalCalories = activeCalories + restingKcal;
+        } else {
+          // Neither provided: compute from MET formula
+          totalCalories = Math.round(metValue * userWeight * durationHours);
+          activeCalories = Math.round(
+            Math.max(0, (metValue - 1) * userWeight * durationHours),
+          );
+        }
+
+        // If metValue was not explicitly given and we have total calories, infer accurate MET
+        if (
+          (isNaN(rawMet) || rawMet <= 0) &&
+          totalCalories > 0 &&
+          durationHours > 0
+        ) {
+          const inferredMet = Number(
+            (totalCalories / (userWeight * durationHours)).toFixed(1),
+          );
+          if (inferredMet > 1.0) {
+            metValue = inferredMet;
+          }
+        }
+      }
+
       const protein = isFood
         ? Math.max(0, Number(Number(e.protein ?? e.protein_g ?? 0).toFixed(1)))
         : 0;
@@ -526,74 +689,36 @@ export function createHealthAgentSystem(
         ? Math.max(0, Math.round(Number(e.sodiumMg ?? e.sodium_mg) || 0))
         : 0;
 
-      const mealTypeRaw = e.mealType || e.meal;
+      const mealTypeRaw = e.mealType || e.meal_type || e.meal;
       const mealType: MealType = isFood
         ? ["breakfast", "lunch", "dinner", "snack"].includes(mealTypeRaw)
           ? mealTypeRaw
           : "snack"
         : "workout";
 
-      const durationMin = isFood
-        ? 0
-        : Math.max(
-            1,
-            Math.round(
-              Number(e.durationMin ?? e.duration_min ?? e.durationMinutes) ||
-                30,
-            ),
-          );
-      const metValue = isFood
-        ? 0
-        : Math.max(0, Number(Number(e.metValue ?? e.met ?? 4.0).toFixed(1)));
-      const activeCalories = isFood
-        ? 0
-        : Math.max(
-            0,
-            Math.round(
-              Number(e.activeCalories ?? e.active_calories) ||
-                Math.round(
-                  Math.max(
-                    0,
-                    (metValue - 1) *
-                      (userProfile?.weightKg || 70) *
-                      (durationMin / 60),
-                  ),
-                ),
-            ),
-          );
-      const modality: ActivityModality = isFood
-        ? "none"
-        : e.modality &&
-            [
-              "cardio",
-              "strength_training",
-              "hiit",
-              "walking",
-              "sports",
-            ].includes(e.modality)
-          ? e.modality
-          : "cardio";
-      const intensity: ActivityIntensity = isFood
-        ? "none"
-        : e.intensity &&
-            ["low", "moderate", "vigorous", "near_max"].includes(e.intensity)
-          ? e.intensity
-          : "moderate";
-
-      const servingInfo = String(
+      // Distance check for serving info
+      const distance = e.distanceKm ?? e.distance_km ?? e.distance;
+      let servingInfo = String(
         e.servingInfo ||
+          e.serving_info ||
           (e.quantity_g
             ? `${e.quantity_g}g`
             : isFood
               ? "1 serving"
-              : `${durationMin} mins`),
+              : distance
+                ? `${durationMin} mins (${distance} km)`
+                : `${durationMin} mins`),
       );
+      if (!isFood && distance && !servingInfo.includes(String(distance))) {
+        servingInfo = `${durationMin} mins (${distance} km)`;
+      }
+
       const details = String(e.details || "");
 
       return {
         type: isFood ? "food" : "activity",
         name,
-        calories,
+        calories: totalCalories,
         protein,
         carbs,
         fat,
@@ -629,6 +754,96 @@ export function createHealthAgentSystem(
           description: "List of drafted food or exercise entries",
           items: {
             type: "object",
+            properties: {
+              type: {
+                type: "string",
+                enum: ["food", "activity"],
+                description: "Entry type: 'food' or 'activity'",
+              },
+              name: {
+                type: "string",
+                description:
+                  "Specific name of food or activity (e.g. 'Cycling (moderate)', 'Grilled Chicken Breast')",
+              },
+              calories: {
+                type: "number",
+                description:
+                  "Total calories: food calories consumed, or TOTAL calories burned during activity",
+              },
+              protein: {
+                type: "number",
+                description: "Protein in grams (0 for activity)",
+              },
+              carbs: {
+                type: "number",
+                description: "Carbohydrates in grams (0 for activity)",
+              },
+              fat: {
+                type: "number",
+                description: "Fat in grams (0 for activity)",
+              },
+              fiber: {
+                type: "number",
+                description: "Dietary fiber in grams (0 for activity)",
+              },
+              sugar: {
+                type: "number",
+                description: "Sugar in grams (0 for activity)",
+              },
+              sodiumMg: {
+                type: "number",
+                description: "Sodium in mg (0 for activity)",
+              },
+              mealType: {
+                type: "string",
+                enum: ["breakfast", "lunch", "dinner", "snack", "workout"],
+                description: "Meal type ('workout' for activity)",
+              },
+              durationMin: {
+                type: "number",
+                description: "Duration of workout in minutes (0 for food)",
+              },
+              metValue: {
+                type: "number",
+                description: "Adult Compendium MET value (0 for food)",
+              },
+              activeCalories: {
+                type: "number",
+                description:
+                  "Net active calories burned above resting metabolism (0 for food)",
+              },
+              modality: {
+                type: "string",
+                enum: [
+                  "none",
+                  "cardio",
+                  "strength_training",
+                  "hiit",
+                  "walking",
+                  "sports",
+                ],
+                description: "Workout modality ('none' for food)",
+              },
+              intensity: {
+                type: "string",
+                enum: ["none", "low", "moderate", "vigorous", "near_max"],
+                description: "Workout intensity ('none' for food)",
+              },
+              servingInfo: {
+                type: "string",
+                description:
+                  "Serving description or distance/duration (e.g. '30 mins (6 km)' or '200g')",
+              },
+              details: {
+                type: "string",
+                description: "Nutritional or biomechanical notes",
+              },
+            },
+            required: [
+              "type",
+              "name",
+              "calories",
+            ],
           },
         },
         needs_clarification: {
@@ -641,6 +856,7 @@ export function createHealthAgentSystem(
           description: "Prompt asking the user for missing details, or null",
         },
       },
+      required: ["draft_entries", "needs_clarification"],
     },
     execute: async (args: any) => {
       emit("thought", "Recording and sanitizing telemetry entries...", {
@@ -1045,6 +1261,20 @@ SCIENTIFIC CORE RULES:
        * If zero context clues exist (e.g., only "I had pasta"): use realistic average adult portion baselines.
        * In your reply message, transparently explain your reasoning based on their clues (e.g., "Based on your description of a 'big bowl', I estimated ~300g cooked pasta (~450 kcal). You can edit the entry if needed!").
      - Call record_health_log with the calculated draft_entries and your clear, encouraging summary reply.
+        * Structure each entry in draft_entries:
+          - "type": "food" | "activity"
+          - "name": descriptive name (e.g. "Cycling (moderate)", "Grilled Chicken Breast")
+          - "calories": total calories (calories consumed for food, or TOTAL calories burned during activity)
+          - For activity:
+            * "durationMin": minutes (e.g. 30)
+            * "metValue": Adult Compendium MET value (e.g. 7.5)
+            * "activeCalories": net active calories burned above resting metabolism (e.g. 192)
+            * "modality": "cardio" | "strength_training" | "hiit" | "walking" | "sports"
+            * "intensity": "low" | "moderate" | "vigorous" | "near_max"
+            * "servingInfo": duration and distance if applicable (e.g. "30 mins (6 km)")
+            * "mealType": "workout"
+          - For food:
+            * "protein", "carbs", "fat", "fiber", "sugar", "sodiumMg", "mealType", "servingInfo"
 4. MULTI-TURN CONVERSATION AWARENESS:
    - Carefully interpret conversational context from prior turns.
    - If the user modifies, corrects, or appends items (e.g. "actually make that 3 eggs", "add 1 banana", "change to 45 mins"):
