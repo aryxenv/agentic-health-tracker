@@ -24,6 +24,13 @@ test('MAF Health Agent System Initialization and Tool Execution', async (t) => {
   assert.ok(system.healthAgent, 'HealthAgent instance should exist');
   assert.equal(system.healthAgent.name, 'HealthAgent');
 
+  await t.test('Specialist subagents are registered as tools', async () => {
+    assert.ok(system.tools.consultNutritionTool, 'consult_nutrition_specialist tool must be registered');
+    assert.equal(system.tools.consultNutritionTool.name, 'consult_nutrition_specialist');
+    assert.ok(system.tools.consultActivityTool, 'consult_activity_specialist tool must be registered');
+    assert.equal(system.tools.consultActivityTool.name, 'consult_activity_specialist');
+  });
+
   await t.test('Open Food Facts tool is registered and exposes search_open_food_facts', async () => {
     const offTool = system.tools.openFoodFactsTool;
     assert.ok(offTool, 'search_open_food_facts tool must be registered');

@@ -27,7 +27,7 @@ if (!process.env.GROQ_API_KEY || !process.env.TAVILY_API_KEY) {
   dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 }
 
-const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
 
 // 2024 Adult Compendium of Physical Activities MET Reference Table
@@ -148,7 +148,7 @@ export function createHealthAgentSystem(
     try {
       const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&search_simple=1&action=process&json=1&page_size=2`;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
+      const timeout = setTimeout(() => controller.abort(), 5000);
 
       const response = await fetch(url, {
         headers: {
@@ -336,7 +336,7 @@ export function createHealthAgentSystem(
   const openFoodFactsTool = tool({
     name: "search_open_food_facts",
     description:
-      "Search the live Open Food Facts database for Belgian and European supermarket products (Albert Heijn, Delhaize, Colruyt, Carrefour, Lidl, Aldi) and brands (Melkunie, Alpro, Boni, etc.). Returns exact calories and macronutrients per 100g and scaled to portions.",
+      "Search the live Open Food Facts database specifically for packaged European and global supermarket products with barcodes or commercial brands (e.g. Albert Heijn, Delhaize, Colruyt, Carrefour, Lidl, Aldi, Melkunie, Alpro, Boni). Do NOT call this for generic, whole, unbranded, homemade, or regional foods (e.g. fruits, nuts, khakra, rotis, rice, plain eggs, curries, restaurant meals) - use internal knowledge or search_web instead.",
     parameters: {
       type: "object",
       properties: {
@@ -1171,17 +1171,21 @@ export function createHealthAgentSystem(
     client,
     name: "NutritionSpecialist",
     description:
-      "Expert nutritionist subagent that retrieves verified online nutrition facts, Belgian/European supermarket products, and restaurant meals.",
+      "Expert nutritionist subagent that retrieves verified online nutrition facts, Belgian/European supermarket products, and calculates portion-scaled macronutrients.",
     instructions: `You are the Nutrition Specialist subagent for Health Agent.
 Your duty:
 1. Deconstruct user food logs into specific food items, brands, and portion amounts.
-2. For packaged grocery items (especially Belgian/European supermarket brands like Melkunie, Alpro, Delhaize, Albert Heijn, Colruyt/Boni, Carrefour, Lidl, Aldi):
+2. Standard Pantry Staples & Whole Foods (e.g., pistachios/nuts, eggs, olive oil, milk, rice, oats, chicken breast, bread, plain fruits, vegetables, seeds):
+   - Directly compute exact portion-scaled calories and macros using your comprehensive nutritional knowledge base (USDA/scientific food composition standards).
+   - Do NOT call external search tools for common pantry staples.
+3. Packaged Commercial Grocery Products (especially European/Belgian supermarket brands like Melkunie, Alpro, Delhaize, Albert Heijn, Colruyt/Boni, Carrefour, Lidl, Aldi):
    - Call "search_open_food_facts" with the product name and portion.
-   - If not found or if Open Food Facts is unavailable, call "search_web" via Tavily.
-3. For restaurant meals, takeout, Belgian dishes (e.g. frituur, stoofvlees, Gentse waterzooi, waffles), recipes, or unlisted foods:
-   - Call "search_web" via Tavily with a concise query (e.g. "<food name> calories macros protein").
-4. Accurately compute portion-scaled values: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
-5. Return a clear, structured breakdown for each food item.`,
+   - If not found or if Open Food Facts fails, call "search_web" via Tavily.
+4. Restaurant Meals, Regional Dishes, Takeaway, or Unfamiliar Items (e.g. jeera khakra, Belgian dishes, curries, bakery items):
+   - Call "search_web" via Tavily with ONE concise, comprehensive query (e.g. "<item name> nutrition calories protein carbs fat per piece/serving").
+   - NEVER make multiple micro-queries for individual nutrients (e.g. do not make a separate search just for sodium or fiber). Formulate a single query to retrieve all nutritional metrics at once.
+5. Accurately compute portion-scaled values: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
+6. Return a clear, concise structured breakdown for each food item.`,
     tools: [
       openFoodFactsTool,
       webSearchTool,
@@ -1236,72 +1240,54 @@ Your duty:
 
 SCIENTIFIC CORE RULES:
 1. Nutrition data:
-   - Must retrieve verified, accurate nutritional data using live online sources (Open Food Facts & Tavily web search).
-   - Use consult_nutrition_specialist, search_web, or search_open_food_facts to determine: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
-   - If portions are specified, scale nutrients accurately to the user's portion.
+   - For all food consumption logging, consult the Nutrition Specialist (call "consult_nutrition_specialist") to calculate portion-scaled calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
 2. Physical activity & energy expenditure:
-   - Use consult_activity_specialist or calculate_met_expenditure to apply 2024 Adult Compendium of Physical Activities MET values.
+   - For workouts, exercises, and physical activities, consult the Physical Activity Specialist (call "consult_activity_specialist") to calculate Adult Compendium MET values and energy expenditure.
    - Total Calories Burned = MET * weight_kg * (duration_minutes / 60).
    - Net Active Calories = (MET - 1) * weight_kg * (duration_minutes / 60).
    - Use user's profile weight (${userProfile?.weightKg || 70}kg).
 3. Ambiguity & Clarification Protocol:
-   - When user input lacks necessary details (such as portion size, quantities, or exercise duration):
-     * If the missing detail is non-critical / estimable (e.g. food portion size without explicit grams, or workout pace):
-       - Call record_health_log with needs_clarification: true, draft_entries: [], and clarification_prompt summarizing the missing detail.
-       - In your reply message, ask 1 concise clarifying question about the missing detail, AND explicitly inform the user: "If you're not sure, you can simply reply with 'estimate' and I will make a reasonable assumption based on your description and context clues."
-     * If the missing detail is critical (e.g. completely unknown food name, or workout with zero duration where guessing is impossible):
-       - Call record_health_log with needs_clarification: true, draft_entries: [], and clarification_prompt summarizing the missing detail.
-       - In your reply message, ask directly for the specific required information without offering estimation.
-   - When user input is clear OR if the user replies "estimate":
-     - Set needs_clarification: false, clarification_prompt: null.
-     - CONTEXT-AWARE ESTIMATION RULES:
-       * When estimating, NEVER blindly default to a static standard portion if the user provided descriptive context clues anywhere in the conversation!
-       * Actively scan and extract context clues:
-         - Size & volume adjectives (e.g., "huge", "big bowl", "large portion", "small slice", "heaping spoonful", "deep plate", "generous scoop", "handful", "thick cut").
-         - Packaging & container fractions (e.g., "half the bottle", "whole can", "a tub", "2 scoops", "a slice", "a pint", "small takeaway box").
-         - Situational & modifier context (e.g., "heavy dinner", "light afternoon snack", "shared with a friend", "extra protein").
-       * If context clues exist: scale the portion size up or down logically based on those clues (e.g., "big bowl" -> ~1.5x-2.0x standard portion; "half a bottle" -> 50% of container size; "small cup" -> ~0.6x; "shared with a friend" -> 50%).
-       * If zero context clues exist (e.g., only "I had pasta"): use realistic average adult portion baselines.
-       * In your reply message, transparently explain your reasoning based on their clues (e.g., "Based on your description of a 'big bowl', I estimated ~300g cooked pasta (~450 kcal). You can edit the entry if needed!").
-     - Call record_health_log with the calculated draft_entries and your clear, encouraging summary reply.
-        * Structure each entry in draft_entries:
-          - "type": "food" | "activity"
-          - "name": descriptive name (e.g. "Cycling (moderate)", "Grilled Chicken Breast")
-          - "calories": total calories (calories consumed for food, or TOTAL calories burned during activity)
-          - For activity:
-            * "durationMin": minutes (e.g. 30)
-            * "metValue": Adult Compendium MET value (e.g. 7.5)
-            * "activeCalories": net active calories burned above resting metabolism (e.g. 192)
-            * "modality": "cardio" | "strength_training" | "hiit" | "walking" | "sports"
-            * "intensity": "low" | "moderate" | "vigorous" | "near_max"
-            * "servingInfo": duration and distance if applicable (e.g. "30 mins (6 km)")
-            * "mealType": "workout"
-          - For food:
-            * "protein", "carbs", "fat", "fiber", "sugar", "sodiumMg", "mealType", "servingInfo"
+   - CONTEXTUAL CULINARY ESTIMATION (Avoid unnecessary friction):
+     * When user input includes standard culinary additions, spreads, or condiments without exact weights/measures (e.g. "olive oil layer spread on it", "spread of butter", "dash of cinnamon", "splash of milk", "salad dressing"):
+       - Do NOT stop to ask for clarification!
+       - Make a sensible contextual culinary assumption (e.g. a spread of olive oil on khakra/toast = ~1 tsp / 5ml = ~40 kcal).
+       - Proceed directly with logging: call consult_nutrition_specialist, then call record_health_log with needs_clarification: false, draft_entries populated, and transparently mention your reasonable assumption in your reply.
+   - CRITICAL AMBIGUITY:
+     * Only ask for clarification if critical information is completely missing and impossible to estimate (e.g. completely unknown food name, or workout with zero activity name or zero duration).
+     * In that case, call record_health_log immediately with needs_clarification: true, draft_entries: [], and clarification_prompt set, WITHOUT calling consult_nutrition_specialist or searching for other items first!
+   - ESTIMATION REQUEST:
+     * When user input is clear OR if the user replies "estimate":
+       - Set needs_clarification: false, clarification_prompt: null.
+       - Use context clues from the conversation (size adjectives, meal types) to scale portions logically, call consult_nutrition_specialist, and call record_health_log with draft_entries.
+       * Structure each entry in draft_entries:
+         - "type": "food" | "activity"
+         - "name": descriptive name (e.g. "Cycling (moderate)", "Grilled Chicken Breast")
+         - "calories": total calories (calories consumed for food, or TOTAL calories burned during activity)
+         - For activity:
+           * "durationMin": minutes (e.g. 30)
+           * "metValue": Adult Compendium MET value (e.g. 7.5)
+           * "activeCalories": net active calories burned above resting metabolism (e.g. 192)
+           * "modality": "cardio" | "strength_training" | "hiit" | "walking" | "sports"
+           * "intensity": "low" | "moderate" | "vigorous" | "near_max"
+           * "servingInfo": duration and distance if applicable (e.g. "30 mins (6 km)")
+           * "mealType": "workout"
+         - For food:
+           * "protein", "carbs", "fat", "fiber", "sugar", "sodiumMg", "mealType", "servingInfo"
 4. MULTI-TURN CONVERSATION AWARENESS:
    - Carefully interpret conversational context from prior turns.
    - If the user modifies, corrects, or appends items (e.g. "actually make that 3 eggs", "add 1 banana", "change to 45 mins"):
      * Reconcile changes against previous items.
      * Always pass the COMPLETE, updated set of draft entries to record_health_log.
 5. EXECUTION SEQUENCE:
-   - First, consult specialist subagents or call lookup tools to calculate the numbers.
-   - Next, call "record_health_log" with draft_entries and your reply.
+   - If critical information is missing and cannot be estimated: call "record_health_log" with needs_clarification: true immediately.
+   - Otherwise, consult specialist subagents (consult_nutrition_specialist or consult_activity_specialist) to compute the numbers.
+   - SINGLE INVOCATION RULE: Call consult_nutrition_specialist at most ONCE with all food items from the user request. Once the subagent returns its nutritional breakdown, do NOT call consult_nutrition_specialist again. Immediately proceed to call record_health_log.
+   - Next, call "record_health_log" with the complete draft_entries, needs_clarification: false, and your reply.
    - After record_health_log returns, write a concise, encouraging scientific summary to the user as normal text and conclude.
 6. USER PROFILE & HISTORICAL COLLECTION RETRIEVAL PROTOCOL:
    - You have 2 dedicated tools for user profile and collection retrieval:
      * "get_user_profile": Retrieves the user's calibrated physical profile (weight, height, age, sex, activity level, health goal, training routine focus) and derived metabolic targets (BMR, TDEE, dynamic target calories, protein target & multiplier, fat, carbs, fiber, sugar ceiling, sodium ceiling).
-       - Light Guidance: Use this when the user asks about their personal stats, BMI, BMR, TDEE, daily targets, or when you need target thresholds to assess progress.
      * "get_user_data": Retrieves logged food items, exercises, and aggregated telemetry from the user's collection (as displayed on the Data tab).
-       - Light Guidance: Use this when the user asks about their logged history or data (e.g. what they ate or did today or on a specific day), how many calories/macros they consumed so far, how much they burned, whether they already logged a specific food or workout, or remaining calorie/macro allowance.
-       - Filtering options:
-         * time_filter: 'today' (default), 'yesterday', 'this_week', 'last_7_days', 'this_month', 'custom', or 'all'.
-         * type: 'food' (nutrition only), 'activity' (workouts only), or 'all'.
-         * meal_type: 'breakfast', 'lunch', 'dinner', 'snack', 'workout', or 'all'.
-         * search_query: optional keyword filter (e.g. 'banana', 'run', 'shake').
-       - For progress / budget questions (e.g. "How much protein do I have left today?"):
-         1. Call get_user_data(time_filter: "today") to get today's consumed total.
-         2. Call get_user_profile() (or use profile context) to get daily target.
-         3. Compare and explain the remaining amount encouragingly.
    - INFORMATION RETRIEVAL VS LOGGING:
      * If the user is only asking for profile stats or historical logged data (without logging new food or workout), do NOT invent or create new draft entries! Call record_health_log with draft_entries: [], needs_clarification: false, and provide your helpful answer in reply.
 ${userContext}`;
@@ -1315,9 +1301,6 @@ ${userContext}`;
       getUserDataTool,
       consultNutritionTool,
       consultActivityTool,
-      openFoodFactsTool,
-      webSearchTool,
-      metExpenditureTool,
       recordHealthLogTool,
     ],
   });
@@ -1549,7 +1532,7 @@ CONTEXT INSTRUCTIONS:
           throw err;
         }
 
-        waitMs = Math.min(Math.max(waitMs, 2000), 16000);
+        waitMs = Math.min(Math.max(waitMs, 2000), 30000);
 
         emit("thought", "Deliberation rate limit backoff", {
           thought: `Temporarily rate limited by provider. Pausing ${(waitMs / 1000).toFixed(1)}s before auto-resuming...`,

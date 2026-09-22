@@ -85,24 +85,24 @@ export interface ModelOption {
   badge?: string;
 }
 
-export const DEFAULT_MODEL_ID: ModelId = 'openai/gpt-oss-120b';
+export const DEFAULT_MODEL_ID: ModelId = 'openai/gpt-oss-20b';
 
 export const AVAILABLE_MODELS: readonly ModelOption[] = [
+  {
+    id: 'openai/gpt-oss-20b',
+    name: 'GPT OSS 20B',
+    provider: 'openai',
+    shortName: '20B',
+    description: 'Ultra-fast & lightweight reasoning model (recommended)',
+    badge: 'Default',
+  },
   {
     id: 'openai/gpt-oss-120b',
     name: 'GPT OSS 120B',
     provider: 'openai',
     shortName: '120B',
     description: 'Flagship reasoning model for complex queries & research',
-    badge: 'Default',
-  },
-  {
-    id: 'openai/gpt-oss-20b',
-    name: 'GPT OSS 20B',
-    provider: 'openai',
-    shortName: '20B',
-    description: 'Ultra-fast & lightweight reasoning model',
-    badge: 'Fast',
+    badge: 'High Precision',
   },
   {
     id: 'qwen/qwen3.8-27b',

@@ -1,5 +1,5 @@
-import type { ChatMessage, UserProfile } from "../types/health";
-import { DEFAULT_PROFILE } from "../types/health";
+import type { ChatMessage, UserProfile, ModelId } from "../types/health";
+import { DEFAULT_PROFILE, DEFAULT_MODEL_ID } from "../types/health";
 
 const PROFILE_STORAGE_KEY = "user_profile";
 
@@ -90,20 +90,20 @@ export function clearStoredChatMessages(): void {
 
 const MODEL_STORAGE_KEY = "health_tracker_selected_model";
 
-export function getSelectedModel(): string {
-  if (typeof window === "undefined") return "openai/gpt-oss-120b";
+export function getSelectedModel(): ModelId {
+  if (typeof window === "undefined") return DEFAULT_MODEL_ID;
   try {
     const stored = localStorage.getItem(MODEL_STORAGE_KEY);
     if (
-      stored === "openai/gpt-oss-120b" ||
       stored === "openai/gpt-oss-20b" ||
+      stored === "openai/gpt-oss-120b" ||
       stored === "qwen/qwen3.8-27b"
     ) {
-      return stored;
+      return stored as ModelId;
     }
-    return "openai/gpt-oss-120b";
+    return DEFAULT_MODEL_ID;
   } catch (_) {
-    return "openai/gpt-oss-120b";
+    return DEFAULT_MODEL_ID;
   }
 }
 
@@ -111,6 +111,9 @@ export function saveSelectedModel(model: string): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(MODEL_STORAGE_KEY, model);
+    window.dispatchEvent(
+      new CustomEvent("health_tracker_model_updated", { detail: model }),
+    );
   } catch (err) {
     console.error("Failed to save selected model to localStorage:", err);
   }

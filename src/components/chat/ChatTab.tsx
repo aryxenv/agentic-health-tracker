@@ -60,6 +60,28 @@ export const ChatTab: React.FC<ChatTabProps> = ({
   };
 
   useEffect(() => {
+    const handleModelUpdated = (e: any) => {
+      if (e.detail && e.detail !== selectedModel) {
+        setSelectedModel(e.detail as ModelId);
+      }
+    };
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "health_tracker_selected_model" && e.newValue) {
+        setSelectedModel(e.newValue as ModelId);
+      }
+    };
+    window.addEventListener("health_tracker_model_updated", handleModelUpdated);
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener(
+        "health_tracker_model_updated",
+        handleModelUpdated,
+      );
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, [selectedModel]);
+
+  useEffect(() => {
     saveStoredChatMessages(messages);
   }, [messages]);
 

@@ -1,24 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const DEFAULT_MODEL_ID = 'openai/gpt-oss-120b';
+const DEFAULT_MODEL_ID = 'openai/gpt-oss-20b';
 
 const AVAILABLE_MODELS = [
+  {
+    id: 'openai/gpt-oss-20b',
+    name: 'GPT OSS 20B',
+    provider: 'openai',
+    shortName: '20B',
+    description: 'Ultra-fast & lightweight reasoning model (recommended)',
+    badge: 'Default',
+  },
   {
     id: 'openai/gpt-oss-120b',
     name: 'GPT OSS 120B',
     provider: 'openai',
     shortName: '120B',
     description: 'Flagship reasoning model for complex queries & research',
-    badge: 'Default',
-  },
-  {
-    id: 'openai/gpt-oss-20b',
-    name: 'GPT OSS 20B',
-    provider: 'openai',
-    shortName: '20B',
-    description: 'Ultra-fast & lightweight reasoning model',
-    badge: 'Fast',
+    badge: 'High Precision',
   },
   {
     id: 'qwen/qwen3.8-27b',
@@ -40,21 +40,28 @@ globalThis.localStorage = {
   clear: () => mockStorage.clear()
 };
 globalThis.window = globalThis;
+globalThis.CustomEvent = class CustomEvent {
+  constructor(name, detail) {
+    this.name = name;
+    this.detail = detail?.detail;
+  }
+};
+globalThis.dispatchEvent = () => true;
 
 function getSelectedModel() {
-  if (typeof window === 'undefined') return 'openai/gpt-oss-120b';
+  if (typeof window === 'undefined') return DEFAULT_MODEL_ID;
   try {
     const stored = localStorage.getItem(MODEL_STORAGE_KEY);
     if (
-      stored === 'openai/gpt-oss-120b' ||
       stored === 'openai/gpt-oss-20b' ||
+      stored === 'openai/gpt-oss-120b' ||
       stored === 'qwen/qwen3.8-27b'
     ) {
       return stored;
     }
-    return 'openai/gpt-oss-120b';
+    return DEFAULT_MODEL_ID;
   } catch (_) {
-    return 'openai/gpt-oss-120b';
+    return DEFAULT_MODEL_ID;
   }
 }
 
@@ -62,6 +69,9 @@ function saveSelectedModel(model) {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(MODEL_STORAGE_KEY, model);
+    window.dispatchEvent(
+      new CustomEvent('health_tracker_model_updated', { detail: model })
+    );
   } catch (err) {}
 }
 
@@ -91,47 +101,49 @@ test('Model Provider Selector & Auto-Switch Suite', async (t) => {
     assert.equal(AVAILABLE_MODELS.length, 3);
     const ids = AVAILABLE_MODELS.map((m) => m.id);
     assert.deepEqual(ids, [
-      'openai/gpt-oss-120b',
       'openai/gpt-oss-20b',
+      'openai/gpt-oss-120b',
       'qwen/qwen3.8-27b'
     ]);
 
-    const m120 = AVAILABLE_MODELS.find(m => m.id === 'openai/gpt-oss-120b');
     const m20 = AVAILABLE_MODELS.find(m => m.id === 'openai/gpt-oss-20b');
+    const m120 = AVAILABLE_MODELS.find(m => m.id === 'openai/gpt-oss-120b');
     const mqwen = AVAILABLE_MODELS.find(m => m.id === 'qwen/qwen3.8-27b');
 
-    assert.equal(m120.provider, 'openai');
     assert.equal(m20.provider, 'openai');
+    assert.equal(m20.badge, 'Default');
+    assert.equal(m120.provider, 'openai');
     assert.equal(mqwen.provider, 'qwen');
-    assert.equal(DEFAULT_MODEL_ID, 'openai/gpt-oss-120b');
+    assert.equal(DEFAULT_MODEL_ID, 'openai/gpt-oss-20b');
   });
 
   await t.test('getNextModel rotates sequentially across all 3 models', () => {
-    assert.equal(getNextModel('openai/gpt-oss-120b'), 'openai/gpt-oss-20b');
-    assert.equal(getNextModel('openai/gpt-oss-20b'), 'qwen/qwen3.8-27b');
-    assert.equal(getNextModel('qwen/qwen3.8-27b'), 'openai/gpt-oss-120b');
+    assert.equal(getNextModel('openai/gpt-oss-20b'), 'openai/gpt-oss-120b');
+    assert.equal(getNextModel('openai/gpt-oss-120b'), 'qwen/qwen3.8-27b');
+    assert.equal(getNextModel('qwen/qwen3.8-27b'), 'openai/gpt-oss-20b');
     // Fallback for unknown model
-    assert.equal(getNextModel('unknown-model'), 'openai/gpt-oss-120b');
+    assert.equal(getNextModel('unknown-model'), 'openai/gpt-oss-20b');
   });
 
   await t.test('LocalStorage persists and retrieves selected model correctly', () => {
     mockStorage.clear();
-    assert.equal(getSelectedModel(), 'openai/gpt-oss-120b');
-
-    saveSelectedModel('openai/gpt-oss-20b');
+    // When empty, defaults to 20b
     assert.equal(getSelectedModel(), 'openai/gpt-oss-20b');
+
+    saveSelectedModel('openai/gpt-oss-120b');
+    assert.equal(getSelectedModel(), 'openai/gpt-oss-120b');
 
     saveSelectedModel('qwen/qwen3.8-27b');
     assert.equal(getSelectedModel(), 'qwen/qwen3.8-27b');
 
-    // Invalid model falls back to default
+    // Invalid model falls back to default 20b
     saveSelectedModel('invalid-model');
-    assert.equal(getSelectedModel(), 'openai/gpt-oss-120b');
+    assert.equal(getSelectedModel(), 'openai/gpt-oss-20b');
   });
 
   await t.test('isRateLimitError correctly flags 429 and token quota errors', () => {
     assert.equal(isRateLimitError({ status: 429, message: 'Too Many Requests' }), true);
-    assert.equal(isRateLimitError({ message: '429 Rate limit reached for model openai/gpt-oss-120b on tokens per day (TPD)' }), true);
+    assert.equal(isRateLimitError({ message: '429 Rate limit reached for model openai/gpt-oss-20b on tokens per day (TPD)' }), true);
     assert.equal(isRateLimitError({ message: 'Request failed with 429' }), true);
     assert.equal(isRateLimitError({ message: 'Tokens per day limit reached' }), true);
     assert.equal(isRateLimitError({ message: 'Invalid food name' }), false);
