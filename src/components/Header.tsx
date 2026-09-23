@@ -26,11 +26,11 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Left: Net Energy Readout */}
         <div className="flex items-baseline space-x-1.5">
           <span className="text-[1.5rem] sm:text-[1.7rem] font-medium tracking-tight text-white leading-none">
-            {netCalories >= 0 ? `+${netCalories}` : netCalories}
+            {Math.round(netCalories) >= 0 ? `+${Math.round(netCalories)}` : Math.round(netCalories)}
             <span className="text-[0.8rem] sm:text-[0.855rem] font-normal text-white/50 ml-1">kcal</span>
           </span>
           <span className="text-[0.76rem] sm:text-[0.855rem] text-white/50 leading-none">
-            / {targets.targetCalories} target
+            / {Math.round(targets.targetCalories)} target
           </span>
         </div>
 
@@ -56,12 +56,12 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="hidden sm:inline-flex h-[34px] items-center space-x-2.5 text-[0.76rem] px-3 rounded-[5px] border border-[rgba(255,255,255,0.35)] bg-transparent text-white/70 whitespace-nowrap leading-none">
             <span className="flex items-center space-x-1">
               <span className="text-white/40">In:</span>
-              <span className="text-white font-medium">{totalIntakeCalories}</span>
+              <span className="text-white font-medium">{Math.round(totalIntakeCalories)}</span>
             </span>
             <span className="text-white/20">|</span>
             <span className="flex items-center space-x-1">
               <span className="text-white/40">Burn:</span>
-              <span className="text-white font-medium">{totalActiveCaloriesBurned}</span>
+              <span className="text-white font-medium">{Math.round(totalActiveCaloriesBurned)}</span>
             </span>
           </div>
 

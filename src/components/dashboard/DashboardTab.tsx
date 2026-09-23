@@ -1,13 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  Trash2
+  Trash2,
+  Plus,
+  Activity,
+  Utensils,
+  Check
 } from 'lucide-react';
 import type { HealthLogRecord, MacroTargets, UserProfile } from '../../types/health';
 import { fetchLogs, deleteLogRecord } from '../../services/api';
 import { aggregateLogs } from '../../services/calculations';
+import { ManualTelemetryCard } from './ManualTelemetryCard';
 import {
   format,
   subDays,
@@ -37,6 +42,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [logs, setLogs] = useState<HealthLogRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [manualEntryType, setManualEntryType] = useState<'food' | 'activity' | null>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isAddMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setIsAddMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsAddMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isAddMenuOpen]);
 
   const { startDateStr, endDateStr, displayTitle } = useMemo(() => {
     if (timeFilter === 'day') {
@@ -195,7 +223,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               Energy Balance Telemetry
             </h3>
             <p className="text-[0.76rem] text-white/50 mt-0.5">
-              Net Calorie Target: {scaledTargetCalories} kcal
+              Net Calorie Target: {Math.round(scaledTargetCalories)} kcal
             </p>
           </div>
 
@@ -208,7 +236,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               aria-hidden="true"
             />
             <span className="text-[0.76rem] font-medium text-white whitespace-nowrap leading-none">
-              {remainingBudget >= 0 ? `${remainingBudget} kcal left` : `${Math.abs(remainingBudget)} kcal over`}
+              {Math.round(remainingBudget) >= 0 ? `${Math.round(remainingBudget)} kcal left` : `${Math.abs(Math.round(remainingBudget))} kcal over`}
             </span>
           </div>
         </div>
@@ -220,7 +248,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               Gross Intake
             </span>
             <span className="text-[1.425rem] font-medium text-white leading-none block">
-              {aggregations.totalIntakeCalories}
+              {Math.round(aggregations.totalIntakeCalories)}
             </span>
             <span className="text-[0.76rem] text-white/40">kcal</span>
           </div>
@@ -230,7 +258,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               Active Burn
             </span>
             <span className="text-[1.425rem] font-medium text-white leading-none block">
-              {aggregations.totalActiveCaloriesBurned}
+              {Math.round(aggregations.totalActiveCaloriesBurned)}
             </span>
             <span className="text-[0.76rem] text-white/40">kcal above BMR</span>
           </div>
@@ -240,9 +268,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               Net Balance
             </span>
             <span className="text-[1.425rem] font-medium text-white leading-none block">
-              {netCalories >= 0 ? `+${netCalories}` : netCalories}
+              {Math.round(netCalories) >= 0 ? `+${Math.round(netCalories)}` : Math.round(netCalories)}
             </span>
-            <span className="text-[0.76rem] text-white/40">of {scaledTargetCalories}</span>
+            <span className="text-[0.76rem] text-white/40">of {Math.round(scaledTargetCalories)}</span>
           </div>
         </div>
 
@@ -250,7 +278,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         <div className="space-y-1.5 pt-1">
           <div className="flex justify-between text-[0.76rem] text-white/50">
             <span>Utilization: {caloriePercent}%</span>
-            <span>Target: {scaledTargetCalories} kcal</span>
+            <span>Target: {Math.round(scaledTargetCalories)} kcal</span>
           </div>
           <div className="w-full h-[6px] border border-[rgba(255,255,255,0.3)] rounded-[3px] overflow-hidden p-[1px]">
             <div
@@ -279,7 +307,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 Protein (ISSN {macroTargets.proteinMultiplier || 1.8}g/kg)
               </span>
               <span className="font-medium text-white">
-                {Math.round(aggregations.totalProtein)}g / {scaledProteinTarget}g
+                {Math.round(aggregations.totalProtein)}g / {Math.round(scaledProteinTarget)}g
               </span>
             </div>
             <div className="w-full h-[4px] border border-[rgba(255,255,255,0.25)] rounded-[2px] overflow-hidden">
@@ -297,7 +325,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div className="flex justify-between items-baseline text-[0.855rem]">
               <span className="text-white/70">Carbohydrates</span>
               <span className="font-medium text-white">
-                {Math.round(aggregations.totalCarbs)}g / {scaledCarbTarget}g
+                {Math.round(aggregations.totalCarbs)}g / {Math.round(scaledCarbTarget)}g
               </span>
             </div>
             <div className="w-full h-[4px] border border-[rgba(255,255,255,0.25)] rounded-[2px] overflow-hidden">
@@ -315,7 +343,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div className="flex justify-between items-baseline text-[0.855rem]">
               <span className="text-white/70">Lipids / Fats (25%)</span>
               <span className="font-medium text-white">
-                {Math.round(aggregations.totalFat)}g / {scaledFatTarget}g
+                {Math.round(aggregations.totalFat)}g / {Math.round(scaledFatTarget)}g
               </span>
             </div>
             <div className="w-full h-[4px] border border-[rgba(255,255,255,0.25)] rounded-[2px] overflow-hidden">
@@ -333,7 +361,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             <div className="flex justify-between items-baseline text-[0.855rem]">
               <span className="text-white/70">Dietary Fiber</span>
               <span className="font-medium text-white">
-                {Math.round(aggregations.totalFiber)}g / {scaledFiberTarget}g
+                {Math.round(aggregations.totalFiber)}g / {Math.round(scaledFiberTarget)}g
               </span>
             </div>
             <div className="w-full h-[4px] border border-[rgba(255,255,255,0.25)] rounded-[2px] overflow-hidden">
@@ -379,7 +407,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     {Math.round(aggregations.totalSugar)}g
                   </span>
                   <span className="text-white/40 text-[0.76rem]">
-                    / {scaledSugarLimit}g max
+                    / {Math.round(scaledSugarLimit)}g max
                   </span>
                 </div>
               </div>
@@ -426,7 +454,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     {Math.round(aggregations.totalSodiumMg)}mg
                   </span>
                   <span className="text-white/40 text-[0.76rem]">
-                    / {scaledSodiumLimit}mg max
+                    / {Math.round(scaledSodiumLimit)}mg max
                   </span>
                 </div>
               </div>
@@ -458,7 +486,99 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           <span className="text-[0.76rem] uppercase tracking-wider text-white/50 font-medium">
             Recorded Telemetry Logs ({logs.length})
           </span>
+
+          <div className="relative" ref={addMenuRef}>
+            <button
+              type="button"
+              onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}
+              aria-label="Add manual telemetry entry"
+              aria-haspopup="listbox"
+              aria-expanded={isAddMenuOpen}
+              title="Add manual entry • Click to select"
+              className={`w-7 h-7 text-white transition-opacity duration-300 cursor-pointer flex items-center justify-center ${
+                isAddMenuOpen ? "opacity-100" : "opacity-50 hover:opacity-100"
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+
+            {isAddMenuOpen && (
+              <div
+                role="listbox"
+                aria-label="Select entry type"
+                className="absolute right-0 top-full mt-1.5 w-44 sm:w-48 rounded-[5px] bg-black border border-[rgba(255,255,255,0.5)] p-1 z-50 animate-in fade-in zoom-in-95 duration-150"
+              >
+                <div className="space-y-0.5">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={manualEntryType === 'activity'}
+                    onClick={() => {
+                      setManualEntryType('activity');
+                      setIsAddMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-[5px] flex items-center justify-between text-[0.855rem] tracking-normal transition-colors duration-300 cursor-pointer ${
+                      manualEntryType === 'activity'
+                        ? "bg-white/10 text-white font-medium"
+                        : "text-white/60 hover:text-white hover:bg-white/5"
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <span className="shrink-0 flex items-center justify-center w-5 h-5 text-current">
+                        <Activity className="w-4 h-4" />
+                      </span>
+                      <span className="truncate">Exercise</span>
+                    </div>
+
+                    {manualEntryType === 'activity' && (
+                      <Check className="w-3.5 h-3.5 shrink-0 text-white ml-2" />
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={manualEntryType === 'food'}
+                    onClick={() => {
+                      setManualEntryType('food');
+                      setIsAddMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-[5px] flex items-center justify-between text-[0.855rem] tracking-normal transition-colors duration-300 cursor-pointer ${
+                      manualEntryType === 'food'
+                        ? "bg-white/10 text-white font-medium"
+                        : "text-white/60 hover:text-white hover:bg-white/5"
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <span className="shrink-0 flex items-center justify-center w-5 h-5 text-current">
+                        <Utensils className="w-4 h-4" />
+                      </span>
+                      <span className="truncate">Snack</span>
+                    </div>
+
+                    {manualEntryType === 'food' && (
+                      <Check className="w-3.5 h-3.5 shrink-0 text-white ml-2" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Manual Telemetry Entry Card */}
+        {manualEntryType && (
+          <ManualTelemetryCard
+            type={manualEntryType}
+            userProfile={userProfile}
+            onSaved={() => {
+              setManualEntryType(null);
+              loadData();
+              onDataChanged();
+            }}
+            onCancel={() => setManualEntryType(null)}
+          />
+        )}
 
         {logs.length === 0 ? (
           <div className="p-6 text-center rounded-[5px] border border-[rgba(255,255,255,0.25)] text-white/50 space-y-1">
@@ -493,14 +613,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         </span>
                       </div>
                       <div className="text-[0.76rem] text-white/50 flex items-center space-x-2 mt-0.5">
-                        <span>{item.servingInfo || (item.durationMin ? `${item.durationMin}m` : '')}</span>
+                        <span>{item.servingInfo || (item.durationMin ? `${Math.round(item.durationMin)}m` : '')}</span>
                         {isFood ? (
                           <span>
-                            • P: {item.protein}g | C: {item.carbs}g | F: {item.fat}g | Fib: {item.fiber}g
+                            • P: {Math.round(item.protein)}g | C: {Math.round(item.carbs)}g | F: {Math.round(item.fat)}g | Fib: {Math.round(item.fiber)}g
                           </span>
                         ) : (
                           <span>
-                            • {item.metValue} MET ({item.activeCalories} net kcal)
+                            • {item.metValue} MET ({Math.round(item.activeCalories)} net kcal)
                           </span>
                         )}
                       </div>
@@ -510,7 +630,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   <div className="flex items-center space-x-3">
                     <div className="text-right">
                       <span className="text-[0.95rem] font-medium text-white">
-                        {isFood ? `+${item.calories}` : `-${item.calories}`}
+                        {isFood ? `+${Math.round(item.calories)}` : `-${Math.round(item.calories)}`}
                       </span>
                       <span className="text-[0.76rem] text-white/50 ml-1">kcal</span>
                     </div>

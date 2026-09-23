@@ -125,12 +125,12 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                   ) : (
                     <div>
                       <span className="text-[1.14rem] font-medium text-white">
-                        {isFood ? `+${entry.calories}` : `-${entry.calories}`}
+                        {isFood ? `+${Math.round(entry.calories)}` : `-${Math.round(entry.calories)}`}
                       </span>
                       <span className="text-[0.76rem] text-white/50 ml-1">kcal</span>
                       {!isFood && entry.activeCalories > 0 && (
                         <div className="text-[0.76rem] text-white/50">
-                          ({entry.activeCalories} net active)
+                          ({Math.round(entry.activeCalories)} net active)
                         </div>
                       )}
                     </div>
@@ -153,7 +153,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                         className="w-full bg-transparent text-center text-[0.855rem] text-white border-none focus:outline-none"
                       />
                     ) : (
-                      <span className="font-medium text-white">{entry.protein}g</span>
+                      <span className="font-medium text-white">{Math.round(entry.protein || 0)}g</span>
                     )}
                   </div>
 
@@ -169,7 +169,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                         className="w-full bg-transparent text-center text-[0.855rem] text-white border-none focus:outline-none"
                       />
                     ) : (
-                      <span className="font-medium text-white">{entry.carbs}g</span>
+                      <span className="font-medium text-white">{Math.round(entry.carbs || 0)}g</span>
                     )}
                   </div>
 
@@ -185,7 +185,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                         className="w-full bg-transparent text-center text-[0.855rem] text-white border-none focus:outline-none"
                       />
                     ) : (
-                      <span className="font-medium text-white">{entry.fat}g</span>
+                      <span className="font-medium text-white">{Math.round(entry.fat || 0)}g</span>
                     )}
                   </div>
 
@@ -201,7 +201,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                         className="w-full bg-transparent text-center text-[0.855rem] text-white border-none focus:outline-none"
                       />
                     ) : (
-                      <span className="font-medium text-white">{entry.fiber}g</span>
+                      <span className="font-medium text-white">{Math.round(entry.fiber || 0)}g</span>
                     )}
                   </div>
                 </div>
@@ -209,7 +209,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                 <div className="grid grid-cols-3 gap-2 text-center text-[0.855rem]">
                   <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
                     <span className="text-[0.76rem] text-white/50 block">Duration</span>
-                    <span className="font-medium text-white">{entry.durationMin}m</span>
+                    <span className="font-medium text-white">{Math.round(entry.durationMin || 0)}m</span>
                   </div>
                   <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
                     <span className="text-[0.76rem] text-white/50 block">Intensity</span>
@@ -237,15 +237,15 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                     <div className="mt-2 grid grid-cols-3 gap-2 p-2 rounded-[5px] border border-[rgba(255,255,255,0.15)] text-[0.855rem] text-white">
                       <div>
                         <span className="text-[0.76rem] text-white/50 block">Net Carbs</span>
-                        <span className="font-medium">{netCarbs.toFixed(1)}g</span>
+                        <span className="font-medium">{Math.round(netCarbs)}g</span>
                       </div>
                       <div>
                         <span className="text-[0.76rem] text-white/50 block">Sugar</span>
-                        <span className="font-medium">{entry.sugar}g</span>
+                        <span className="font-medium">{Math.round(entry.sugar || 0)}g</span>
                       </div>
                       <div>
                         <span className="text-[0.76rem] text-white/50 block">Sodium</span>
-                        <span className="font-medium">{entry.sodiumMg}mg</span>
+                        <span className="font-medium">{Math.round(entry.sodiumMg || 0)}mg</span>
                       </div>
                     </div>
                   )}

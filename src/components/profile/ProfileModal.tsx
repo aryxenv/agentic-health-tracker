@@ -74,17 +74,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <div className="p-4 rounded-[5px] border border-[rgba(255,255,255,0.25)] space-y-3 bg-transparent">
             <div className="flex items-center justify-between text-[0.76rem] text-white/50">
               <span className="uppercase tracking-wider">ISSN Clinical Targets</span>
-              <span>BMR: {bmr} kcal</span>
+              <span>BMR: {Math.round(bmr)} kcal</span>
             </div>
             <div className="flex items-baseline justify-between">
               <div>
                 <span className="text-[1.7rem] font-medium text-white leading-none">
-                  {targets.targetCalories}
+                  {Math.round(targets.targetCalories)}
                 </span>
                 <span className="text-[0.855rem] text-white/50 ml-1.5">kcal/day</span>
               </div>
               <div className="text-[0.76rem] text-white/50">
-                TDEE estimate: {tdee} kcal
+                TDEE estimate: {Math.round(tdee)} kcal
               </div>
             </div>
 
@@ -94,19 +94,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 <div className="text-[0.76rem] text-white/50 uppercase">
                   Protein ({targets.proteinMultiplier}g)
                 </div>
-                <div className="font-medium text-white">{targets.proteinGrams}g</div>
+                <div className="font-medium text-white">{Math.round(targets.proteinGrams)}g</div>
               </div>
               <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
                 <div className="text-[0.76rem] text-white/50 uppercase">Carbs</div>
-                <div className="font-medium text-white">{targets.carbGrams}g</div>
+                <div className="font-medium text-white">{Math.round(targets.carbGrams)}g</div>
               </div>
               <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
                 <div className="text-[0.76rem] text-white/50 uppercase">Fat</div>
-                <div className="font-medium text-white">{targets.fatGrams}g</div>
+                <div className="font-medium text-white">{Math.round(targets.fatGrams)}g</div>
               </div>
               <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
                 <div className="text-[0.76rem] text-white/50 uppercase">Fiber</div>
-                <div className="font-medium text-white">{targets.fiberGrams}g</div>
+                <div className="font-medium text-white">{Math.round(targets.fiberGrams)}g</div>
               </div>
             </div>
 
@@ -114,11 +114,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[rgba(255,255,255,0.15)] text-[0.76rem]">
               <div className="flex justify-between px-2.5 py-1 rounded-[5px] border border-[rgba(255,255,255,0.15)]">
                 <span className="text-white/50">Sugar Ceiling:</span>
-                <span className="font-medium text-white">&lt;{targets.sugarLimitGrams || 50}g</span>
+                <span className="font-medium text-white">&lt;{Math.round(targets.sugarLimitGrams || 50)}g</span>
               </div>
               <div className="flex justify-between px-2.5 py-1 rounded-[5px] border border-[rgba(255,255,255,0.15)]">
                 <span className="text-white/50">Sodium Ceiling:</span>
-                <span className="font-medium text-white">&lt;{targets.sodiumLimitMg || 2300}mg</span>
+                <span className="font-medium text-white">&lt;{Math.round(targets.sodiumLimitMg || 2300)}mg</span>
               </div>
             </div>
           </div>
