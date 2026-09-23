@@ -17,12 +17,10 @@ import {
 } from "../../services/storage";
 import {
   AVAILABLE_MODELS,
-  DEFAULT_MODEL_ID,
   type AgenticStep,
   type ChatMessage,
   type DraftEntry,
   type ModelId,
-  type ModelOption,
   type UserProfile,
 } from "../../types/health";
 import { DraftCard } from "./DraftCard";
@@ -449,13 +447,15 @@ export const ChatTab: React.FC<ChatTabProps> = ({
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                       <span>
                         Rate limit reached for{" "}
-                        {AVAILABLE_MODELS.find((m) => m.id === msg.failedModel)?.name ||
+                        {AVAILABLE_MODELS.find((m) => m.id === msg.failedModel)
+                          ?.name ||
                           msg.failedModel ||
                           "model"}
                       </span>
                     </div>
                     <p className="text-[0.76rem] text-white/50 mt-1 leading-snug">
-                      Provider capacity reached. Retry immediately with another model with full context preserved.
+                      Provider capacity reached. Retry immediately with another
+                      model with full context preserved.
                     </p>
                     {(() => {
                       const nextModelId = getNextModel(
@@ -578,7 +578,7 @@ export const ChatTab: React.FC<ChatTabProps> = ({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Log food or exercise (e.g. '1 bowl oatmeal')..."
+            placeholder="Log food/exercise or explore your data..."
             disabled={loading}
             style={{ fieldSizing: "content" } as React.CSSProperties}
             className="auto-expand w-full bg-transparent pl-3 pr-20 py-2.5 text-[0.95rem] text-white placeholder-white/30 focus:outline-none resize-none min-h-[44px] max-h-[160px] overflow-y-auto leading-[1.5] block no-scrollbar"
