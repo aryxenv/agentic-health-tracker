@@ -1259,6 +1259,7 @@ SPECIALIST ROUTING RULES:
      * When re-logging a past item, Data Explorer will return that specific item. Call "record_health_log" with ONLY that single draft entry for today. NEVER pull in other unrelated items from past days!
      * For pure stats/history questions, call "record_health_log" with draft_entries: [], needs_clarification: false, and provide your helpful summary in reply.
 2. New food consumption logging:
+   - If the user provides complete nutrition values (calories and macros), call "record_health_log" directly with those numbers.
    - For new food items, meals, or ingredients not from past logs, consult the Nutrition Specialist (call "consult_nutrition_specialist") to calculate portion-scaled calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
 3. Physical activity & energy expenditure:
    - For workouts and exercises, consult the Physical Activity Specialist (call "consult_activity_specialist") to calculate Adult Compendium MET values and energy expenditure.
@@ -1485,6 +1486,26 @@ CONTEXT INSTRUCTIONS:
 
       return result;
     } catch (err: any) {
+      // 1. Universal Early-Return: If telemetry draft entries were ALREADY successfully recorded
+      // into agentRunState before the downstream provider error occurred (e.g. final closing turn 429),
+      // deliver the captured telemetry immediately instead of entering a 30s retry loop or failing.
+      if (
+        agentRunState.recordedResult &&
+        agentRunState.recordedResult.draft_entries &&
+        agentRunState.recordedResult.draft_entries.length > 0
+      ) {
+        emit("thought", "Telemetry captured successfully", {
+          thought:
+            "Draft entries were recorded before downstream provider interruption. Delivering draft card immediately.",
+        });
+        const result = agentRunState.recordedResult;
+        if (!result.reply || result.reply.trim().length === 0) {
+          result.reply =
+            "I've drafted and recorded your telemetry based on your input.";
+        }
+        return result;
+      }
+
       const isRateLimit =
         err?.status === 429 ||
         err?.statusCode === 429 ||
@@ -1495,7 +1516,11 @@ CONTEXT INSTRUCTIONS:
         err?.message?.toLowerCase().includes("tokens per day") ||
         err?.message?.includes("TPD");
 
-      if (isRateLimit && !isDailyLimit && attempt < maxRetries) {
+      const isOTPM =
+        err?.message?.includes("OTPM") ||
+        err?.message?.toLowerCase().includes("output tokens per minute");
+
+      if (isRateLimit && !isDailyLimit && !isOTPM && attempt < maxRetries) {
         let waitMs = (attempt + 1) * 3000;
         const retryAfterHeader =
           err?.headers?.["retry-after"] ||
