@@ -4,14 +4,16 @@ import type {
   DraftEntry,
   ActivityIntensity,
   ActivityModality,
-  UserProfile
+  UserProfile,
+  HealthLogRecord
 } from '../../types/health';
-import { saveLogEntries, sendChatMessageStream } from '../../services/api';
+import { saveLogEntries, updateLogEntry, sendChatMessageStream } from '../../services/api';
 import { getSelectedModel } from '../../services/storage';
 
 interface ManualTelemetryCardProps {
   type: 'food' | 'activity';
   userProfile: UserProfile;
+  initialRecord?: HealthLogRecord;
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -19,33 +21,67 @@ interface ManualTelemetryCardProps {
 export const ManualTelemetryCard: React.FC<ManualTelemetryCardProps> = ({
   type,
   userProfile,
+  initialRecord,
   onSaved,
   onCancel
 }) => {
-  const isFood = type === 'food';
+  const isFood = initialRecord ? initialRecord.type === 'food' : type === 'food';
 
   // Form state
-  const [name, setName] = useState('');
-  const [calories, setCalories] = useState<string>('');
+  const [name, setName] = useState(initialRecord?.name || '');
+  const [calories, setCalories] = useState<string>(
+    initialRecord ? String(initialRecord.calories ?? '') : ''
+  );
   
   // Food specific fields
-  const [servingInfo, setServingInfo] = useState('');
-  const [protein, setProtein] = useState<string>('');
-  const [carbs, setCarbs] = useState<string>('');
-  const [fat, setFat] = useState<string>('');
-  const [fiber, setFiber] = useState<string>('');
-  const [sugar, setSugar] = useState<string>('');
-  const [sodiumMg, setSodiumMg] = useState<string>('');
+  const [servingInfo, setServingInfo] = useState(initialRecord?.servingInfo || '');
+  const [protein, setProtein] = useState<string>(
+    initialRecord ? String(initialRecord.protein ?? '') : ''
+  );
+  const [carbs, setCarbs] = useState<string>(
+    initialRecord ? String(initialRecord.carbs ?? '') : ''
+  );
+  const [fat, setFat] = useState<string>(
+    initialRecord ? String(initialRecord.fat ?? '') : ''
+  );
+  const [fiber, setFiber] = useState<string>(
+    initialRecord ? String(initialRecord.fiber ?? '') : ''
+  );
+  const [sugar, setSugar] = useState<string>(
+    initialRecord ? String(initialRecord.sugar ?? '') : ''
+  );
+  const [sodiumMg, setSodiumMg] = useState<string>(
+    initialRecord ? String(initialRecord.sodiumMg ?? '') : ''
+  );
 
   // Activity specific fields
-  const [durationMin, setDurationMin] = useState<string>('');
-  const [intensity, setIntensity] = useState<ActivityIntensity>('moderate');
-  const [modality, setModality] = useState<ActivityModality>('cardio');
-  const [metValue, setMetValue] = useState<string>('');
-  const [activeCalories, setActiveCalories] = useState<string>('');
+  const [durationMin, setDurationMin] = useState<string>(
+    initialRecord ? String(initialRecord.durationMin ?? '') : ''
+  );
+  const [intensity, setIntensity] = useState<ActivityIntensity>(
+    initialRecord?.intensity && initialRecord.intensity !== 'none'
+      ? initialRecord.intensity
+      : 'moderate'
+  );
+  const [modality, setModality] = useState<ActivityModality>(
+    initialRecord?.modality && initialRecord.modality !== 'none'
+      ? initialRecord.modality
+      : 'cardio'
+  );
+  const [metValue, setMetValue] = useState<string>(
+    initialRecord ? String(initialRecord.metValue ?? '') : ''
+  );
+  const [activeCalories, setActiveCalories] = useState<string>(
+    initialRecord ? String(initialRecord.activeCalories ?? '') : ''
+  );
 
   // UI state
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(
+    Boolean(
+      initialRecord &&
+      ((Number(initialRecord.sugar) || 0) > 0 || (Number(initialRecord.sodiumMg) || 0) > 0)
+    )
+  );
   const [isInferring, setIsInferring] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -187,7 +223,9 @@ Please infer all the blank fields and generate the draft entry with exact number
       fiber: isFood ? Math.max(0, parseFloat(fiber) || 0) : 0,
       sugar: isFood ? Math.max(0, parseFloat(sugar) || 0) : 0,
       sodiumMg: isFood ? Math.max(0, parseFloat(sodiumMg) || 0) : 0,
-      mealType: isFood ? 'snack' : 'workout',
+      mealType: isFood
+        ? (initialRecord?.mealType || 'snack')
+        : (initialRecord?.mealType || 'workout'),
       durationMin: !isFood ? Math.max(0, parseFloat(durationMin) || 0) : 0,
       metValue: !isFood ? Math.max(0, parseFloat(metValue) || 1.0) : 0,
       activeCalories: !isFood
@@ -196,14 +234,18 @@ Please infer all the blank fields and generate the draft entry with exact number
       modality: !isFood ? modality : 'none',
       intensity: !isFood ? intensity : 'none',
       servingInfo: isFood ? (servingInfo.trim() || '1 serving') : '',
-      details: isFood ? 'Manual snack entry' : 'Manual exercise entry'
+      details: initialRecord?.details || (isFood ? 'Manual snack entry' : 'Manual exercise entry')
     };
 
     try {
-      await saveLogEntries([entry]);
+      if (initialRecord) {
+        await updateLogEntry(initialRecord.rowKey, entry, initialRecord.timestamp);
+      } else {
+        await saveLogEntries([entry]);
+      }
       onSaved();
     } catch (err: any) {
-      console.error('Failed to save manual log entry:', err);
+      console.error('Failed to save log entry:', err);
       setErrorMessage(err.message || 'Failed to record telemetry.');
     } finally {
       setIsSaving(false);
@@ -222,18 +264,18 @@ Please infer all the blank fields and generate the draft entry with exact number
             aria-hidden="true"
           />
           <span className="text-[0.76rem] uppercase tracking-wider text-white/50 font-medium">
-            Manual Telemetry Payload
+            {initialRecord ? 'Telemetry Detail' : 'Manual Telemetry Payload'}
           </span>
           <span className="text-[0.76rem] px-1.5 py-0.2 rounded-[3px] border border-[rgba(255,255,255,0.2)] text-white/50 uppercase">
-            {isFood ? 'Snack' : 'Exercise'}
+            {isFood ? (initialRecord?.mealType || 'Snack') : (initialRecord?.mealType || 'Exercise')}
           </span>
         </div>
 
         <button
           onClick={onCancel}
           disabled={isSaving || isInferring}
-          className="text-white/50 hover:text-white transition-colors duration-300 p-1"
-          aria-label="Cancel manual entry"
+          className="text-white/50 hover:text-white transition-colors duration-300 p-1 cursor-pointer"
+          aria-label="Close telemetry card"
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -505,7 +547,7 @@ Please infer all the blank fields and generate the draft entry with exact number
             type="button"
             onClick={onCancel}
             disabled={isSaving || isInferring}
-            className="px-3 py-1.5 rounded-[5px] text-[0.76rem] text-white/50 hover:text-white transition-colors duration-300 disabled:opacity-30"
+            className="px-3 py-1.5 rounded-[5px] text-[0.76rem] text-white/50 hover:text-white transition-colors duration-300 disabled:opacity-30 cursor-pointer"
           >
             Cancel
           </button>
@@ -513,14 +555,14 @@ Please infer all the blank fields and generate the draft entry with exact number
             type="button"
             onClick={handleSave}
             disabled={isSaving || isInferring}
-            className="flex items-center space-x-1.5 px-4 py-1.5 rounded-[5px] border border-[rgba(255,255,255,0.5)] hover:border-white text-[0.855rem] font-medium text-white bg-transparent opacity-75 hover:opacity-100 transition-all duration-300 disabled:opacity-30"
+            className="flex items-center space-x-1.5 px-4 py-1.5 rounded-[5px] border border-[rgba(255,255,255,0.5)] hover:border-white text-[0.855rem] font-medium text-white bg-transparent opacity-75 hover:opacity-100 transition-all duration-300 disabled:opacity-30 cursor-pointer"
           >
             {isSaving ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <Check className="w-3.5 h-3.5" />
             )}
-            <span>{isSaving ? 'Logging...' : 'Confirm & Save'}</span>
+            <span>{isSaving ? 'Saving...' : initialRecord ? 'Save Changes' : 'Confirm & Save'}</span>
           </button>
         </div>
       </div>

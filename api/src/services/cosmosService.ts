@@ -202,6 +202,76 @@ export class HealthCosmosService {
     }));
   }
 
+  async updateLog(
+    id: string,
+    entry: DraftEntry,
+    userId: string = DEFAULT_USER_ID,
+    timestamp?: string
+  ): Promise<HealthLogRecord> {
+    const container = this.getContainer();
+    const originalTimestamp = timestamp || new Date().toISOString();
+    const date = originalTimestamp.substring(0, 10);
+    const isFood = entry.type === 'food';
+
+    const doc: CosmosHealthDoc = {
+      id,
+      userId,
+      docType: 'log',
+      date,
+      type: entry.type,
+      name: entry.name,
+      calories: Number(entry.calories || 0),
+      protein: Number(entry.protein || 0),
+      carbs: Number(entry.carbs || 0),
+      fat: Number(entry.fat || 0),
+      fiber: Number(entry.fiber || 0),
+      sugar: Number(entry.sugar || 0),
+      sodiumMg: Number(entry.sodiumMg || 0),
+      mealType: entry.mealType || (isFood ? 'snack' : 'workout'),
+      durationMin: Number(entry.durationMin || 0),
+      metValue: Number(entry.metValue || 0),
+      activeCalories: Number(entry.activeCalories || 0),
+      modality: entry.modality || 'none',
+      intensity: entry.intensity || 'none',
+      servingInfo: entry.servingInfo || '',
+      details: entry.details || '',
+      rawInput: (entry as any).rawInput || '',
+      timestamp: originalTimestamp,
+      rowKey: id,
+      partitionKey: userId,
+      ...(isFood
+        ? {
+            food: {
+              mealType: entry.mealType || 'snack',
+              servingInfo: entry.servingInfo || '',
+              nutrients: {
+                calories: Number(entry.calories || 0),
+                protein: Number(entry.protein || 0),
+                carbs: Number(entry.carbs || 0),
+                fat: Number(entry.fat || 0),
+                fiber: Number(entry.fiber || 0),
+                sugar: Number(entry.sugar || 0),
+                sodiumMg: Number(entry.sodiumMg || 0)
+              }
+            }
+          }
+        : {
+            activity: {
+              durationMin: Number(entry.durationMin || 0),
+              metValue: Number(entry.metValue || 0),
+              activeCalories: Number(entry.activeCalories || 0),
+              modality: entry.modality || 'none',
+              intensity: entry.intensity || 'none',
+              details: entry.details || ''
+            }
+          }),
+      updatedAt: new Date().toISOString()
+    };
+
+    const { resource } = await container.items.upsert(doc);
+    return (resource as unknown as HealthLogRecord) || doc;
+  }
+
   async deleteLog(rowKeyOrId: string, partitionKeyOrUserId?: string): Promise<boolean> {
     const container = this.getContainer();
     const userId = partitionKeyOrUserId || DEFAULT_USER_ID;

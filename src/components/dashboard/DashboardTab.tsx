@@ -7,10 +7,12 @@ import {
   Plus,
   Activity,
   Utensils,
-  Check
+  Check,
+  Copy,
+  Loader2
 } from 'lucide-react';
-import type { HealthLogRecord, MacroTargets, UserProfile } from '../../types/health';
-import { fetchLogs, deleteLogRecord } from '../../services/api';
+import type { HealthLogRecord, MacroTargets, UserProfile, DraftEntry } from '../../types/health';
+import { fetchLogs, deleteLogRecord, saveLogEntries } from '../../services/api';
 import { aggregateLogs } from '../../services/calculations';
 import { ManualTelemetryCard } from './ManualTelemetryCard';
 import {
@@ -46,8 +48,74 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [manualEntryType, setManualEntryType] = useState<'food' | 'activity' | null>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
+  const [reloggingKey, setReloggingKey] = useState<string | null>(null);
+  const [pendingRelogItem, setPendingRelogItem] = useState<HealthLogRecord | null>(null);
+  const [dontShowRelogWarning, setDontShowRelogWarning] = useState<boolean>(false);
+  const [editingLogKey, setEditingLogKey] = useState<string | null>(null);
+
+  const SKIP_RELOG_WARNING_KEY = 'health_tracker_skip_relog_warning';
+
+  const executeRelog = async (item: HealthLogRecord) => {
+    setReloggingKey(item.rowKey);
+    try {
+      const entry: DraftEntry = {
+        type: item.type,
+        name: item.name,
+        calories: item.calories,
+        protein: item.protein || 0,
+        carbs: item.carbs || 0,
+        fat: item.fat || 0,
+        fiber: item.fiber || 0,
+        sugar: item.sugar || 0,
+        sodiumMg: item.sodiumMg || 0,
+        mealType: item.mealType || (item.type === 'food' ? 'snack' : 'workout'),
+        durationMin: item.durationMin || 0,
+        metValue: item.metValue || 0,
+        activeCalories: item.activeCalories || 0,
+        modality: item.modality || 'none',
+        intensity: item.intensity || 'none',
+        servingInfo: item.servingInfo || '',
+        details: item.details || `Re-logged from ${item.timestamp ? String(item.timestamp).slice(0, 10) : 'previous entry'}`
+      };
+
+      await saveLogEntries([entry]);
+      loadData();
+      onDataChanged();
+    } catch (err: any) {
+      console.error('Failed to re-log item:', err);
+      alert(`Re-log failure: ${err.message || 'Unknown error'}`);
+    } finally {
+      setReloggingKey(null);
+    }
+  };
+
+  const handleRelogClick = (item: HealthLogRecord) => {
+    let skipWarning = false;
+    try {
+      skipWarning = localStorage.getItem(SKIP_RELOG_WARNING_KEY) === 'true';
+    } catch (_) {}
+
+    if (skipWarning) {
+      executeRelog(item);
+    } else {
+      setPendingRelogItem(item);
+      setDontShowRelogWarning(false);
+    }
+  };
+
+  const handleConfirmRelog = () => {
+    if (!pendingRelogItem) return;
+    if (dontShowRelogWarning) {
+      try {
+        localStorage.setItem(SKIP_RELOG_WARNING_KEY, 'true');
+      } catch (_) {}
+    }
+    const itemToRelog = pendingRelogItem;
+    setPendingRelogItem(null);
+    executeRelog(itemToRelog);
+  };
+
   useEffect(() => {
-    if (!isAddMenuOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
         setIsAddMenuOpen(false);
@@ -55,16 +123,28 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setIsAddMenuOpen(false);
+        if (pendingRelogItem) {
+          setPendingRelogItem(null);
+        } else if (isAddMenuOpen) {
+          setIsAddMenuOpen(false);
+        } else if (editingLogKey) {
+          setEditingLogKey(null);
+        }
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
+
+    if (isAddMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    if (isAddMenuOpen || pendingRelogItem || editingLogKey) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isAddMenuOpen]);
+  }, [isAddMenuOpen, pendingRelogItem, editingLogKey]);
 
   const { startDateStr, endDateStr, displayTitle } = useMemo(() => {
     if (timeFilter === 'day') {
@@ -590,11 +670,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         ) : (
           <div className="space-y-2">
             {logs.map((item) => {
+              if (editingLogKey === item.rowKey) {
+                return (
+                  <ManualTelemetryCard
+                    key={item.rowKey}
+                    type={item.type}
+                    userProfile={userProfile}
+                    initialRecord={item}
+                    onSaved={() => {
+                      setEditingLogKey(null);
+                      loadData();
+                      onDataChanged();
+                    }}
+                    onCancel={() => setEditingLogKey(null)}
+                  />
+                );
+              }
+
               const isFood = item.type === 'food';
               return (
                 <div
                   key={item.rowKey}
-                  className="p-3 rounded-[5px] border border-[rgba(255,255,255,0.25)] hover:border-white transition-colors duration-300 flex items-center justify-between group bg-transparent"
+                  onClick={() => setEditingLogKey(item.rowKey)}
+                  className="p-3 rounded-[5px] border border-[rgba(255,255,255,0.25)] hover:border-white transition-colors duration-300 flex items-center justify-between group bg-transparent cursor-pointer"
                 >
                   <div className="flex items-center space-x-3">
                     <div
@@ -627,8 +725,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-3">
-                    <div className="text-right">
+                  <div className="flex items-center space-x-2">
+                    <div className="text-right mr-1">
                       <span className="text-[0.95rem] font-medium text-white">
                         {isFood ? `+${Math.round(item.calories)}` : `-${Math.round(item.calories)}`}
                       </span>
@@ -636,11 +734,31 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     </div>
 
                     <button
-                      onClick={() => handleDelete(item)}
-                      disabled={deletingKey === item.rowKey}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRelogClick(item);
+                      }}
+                      disabled={reloggingKey === item.rowKey || deletingKey === item.rowKey}
+                      title="Copy item to today"
+                      aria-label="Copy item to today"
+                      className="p-1.5 rounded-[5px] border border-[rgba(255,255,255,0.25)] text-white opacity-40 hover:opacity-100 transition-opacity duration-300 disabled:opacity-10 cursor-pointer"
+                    >
+                      {reloggingKey === item.rowKey ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(item);
+                      }}
+                      disabled={deletingKey === item.rowKey || reloggingKey === item.rowKey}
                       title="Delete log"
                       aria-label="Delete entry"
-                      className="p-1.5 rounded-[5px] border border-[rgba(255,255,255,0.25)] text-white opacity-40 hover:opacity-100 transition-opacity duration-300 disabled:opacity-10"
+                      className="p-1.5 rounded-[5px] border border-[rgba(255,255,255,0.25)] text-white opacity-40 hover:opacity-100 transition-opacity duration-300 disabled:opacity-10 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -651,6 +769,68 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* Re-log / Copy to Today Confirmation Warning Modal */}
+      {pendingRelogItem && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="relog-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+        >
+          <div className="bg-black border border-[rgba(255,255,255,0.5)] rounded-[5px] p-5 max-w-sm w-full space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="space-y-1.5">
+              <div className="flex items-center space-x-2">
+                <div
+                  className={`w-[8px] h-[8px] rounded-full ${
+                    pendingRelogItem.type === 'food' ? 'bg-[#3FB950]' : 'bg-[#E3B341]'
+                  }`}
+                  aria-hidden="true"
+                />
+                <h3 id="relog-modal-title" className="text-[0.95rem] font-medium text-white">
+                  Copy to Today's Telemetry
+                </h3>
+              </div>
+              <p className="text-[0.855rem] text-white/70 leading-[1.6]">
+                This will immediately copy and log{' '}
+                <span className="font-semibold text-white">{pendingRelogItem.name}</span>{' '}
+                ({pendingRelogItem.type === 'food' ? `+${Math.round(pendingRelogItem.calories)} kcal` : `-${Math.round(pendingRelogItem.calories)} kcal`}){' '}
+                into today's recorded telemetry logs without running an AI agent pass.
+              </p>
+            </div>
+
+            {/* Do not show again checkbox */}
+            <label className="flex items-center space-x-2.5 text-[0.76rem] text-white/60 hover:text-white cursor-pointer select-none transition-colors duration-300">
+              <input
+                type="checkbox"
+                checked={dontShowRelogWarning}
+                onChange={(e) => setDontShowRelogWarning(e.target.checked)}
+                className="w-3.5 h-3.5 rounded-[3px] border border-[rgba(255,255,255,0.4)] bg-transparent accent-white cursor-pointer"
+              />
+              <span>Do not show again</span>
+            </label>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-[rgba(255,255,255,0.15)]">
+              <button
+                type="button"
+                onClick={() => setPendingRelogItem(null)}
+                className="px-3 py-1.5 rounded-[5px] text-[0.855rem] text-white/50 hover:text-white transition-colors duration-300 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRelog}
+                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-[5px] border border-[rgba(255,255,255,0.5)] hover:border-white text-[0.855rem] font-medium text-white bg-transparent opacity-80 hover:opacity-100 transition-all duration-300 cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy to Today</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

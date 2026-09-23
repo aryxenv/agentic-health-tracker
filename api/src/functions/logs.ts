@@ -21,7 +21,18 @@ export async function logPostHandler(
     }
 
     const rawInput = body.rawInput || '';
-    const userId = body.userId || 'default_user';
+    const userId = body.userId || body.partitionKey || 'default_user';
+
+    // Support updating an existing log entry
+    if (body.rowKey || body.id) {
+      const rowKey = body.rowKey || body.id;
+      const record = await cosmosService.updateLog(rowKey, body as DraftEntry, userId, body.timestamp);
+      return {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, record })
+      };
+    }
 
     // Support both single draft item and batch array of entries
     if (Array.isArray(body.entries)) {
@@ -170,7 +181,7 @@ export async function profilePostHandler(
 
 // Register HTTP routes
 app.http('log_post', {
-  methods: ['POST'],
+  methods: ['POST', 'PUT'],
   authLevel: 'anonymous',
   route: 'log',
   handler: logPostHandler

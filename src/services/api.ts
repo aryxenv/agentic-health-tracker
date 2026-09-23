@@ -172,6 +172,32 @@ export async function saveLogEntries(
   return result.records || [result.record];
 }
 
+export async function updateLogEntry(
+  rowKey: string,
+  entry: DraftEntry,
+  timestamp?: string
+): Promise<HealthLogRecord> {
+  const response = await fetch(`${API_BASE}/log`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      rowKey,
+      ...entry,
+      timestamp
+    })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Failed to update log: ${errText}`);
+  }
+
+  const result = await response.json();
+  return result.record;
+}
+
 export async function fetchLogs(startDate?: string, endDate?: string): Promise<HealthLogRecord[]> {
   const params = new URLSearchParams();
   if (startDate) params.set('startDate', startDate);
