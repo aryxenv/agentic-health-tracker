@@ -49,11 +49,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const addMenuRef = useRef<HTMLDivElement>(null);
 
   const [reloggingKey, setReloggingKey] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [pendingRelogItem, setPendingRelogItem] = useState<HealthLogRecord | null>(null);
   const [dontShowRelogWarning, setDontShowRelogWarning] = useState<boolean>(false);
+
+  const [pendingDeleteItem, setPendingDeleteItem] = useState<HealthLogRecord | null>(null);
+  const [dontShowDeleteWarning, setDontShowDeleteWarning] = useState<boolean>(false);
+
   const [editingLogKey, setEditingLogKey] = useState<string | null>(null);
 
   const SKIP_RELOG_WARNING_KEY = 'health_tracker_skip_relog_warning';
+  const SKIP_DELETE_WARNING_KEY = 'health_tracker_skip_delete_warning';
 
   const executeRelog = async (item: HealthLogRecord) => {
     setReloggingKey(item.rowKey);
@@ -81,6 +87,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       await saveLogEntries([entry]);
       loadData();
       onDataChanged();
+      setCopiedKey(item.rowKey);
+      setTimeout(() => {
+        setCopiedKey((curr) => (curr === item.rowKey ? null : curr));
+      }, 1800);
     } catch (err: any) {
       console.error('Failed to re-log item:', err);
       alert(`Re-log failure: ${err.message || 'Unknown error'}`);
@@ -123,7 +133,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (pendingRelogItem) {
+        if (pendingDeleteItem) {
+          setPendingDeleteItem(null);
+        } else if (pendingRelogItem) {
           setPendingRelogItem(null);
         } else if (isAddMenuOpen) {
           setIsAddMenuOpen(false);
@@ -136,7 +148,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     if (isAddMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
-    if (isAddMenuOpen || pendingRelogItem || editingLogKey) {
+    if (isAddMenuOpen || pendingRelogItem || pendingDeleteItem || editingLogKey) {
       document.addEventListener('keydown', handleKeyDown);
     }
 
@@ -144,7 +156,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isAddMenuOpen, pendingRelogItem, editingLogKey]);
+  }, [isAddMenuOpen, pendingRelogItem, pendingDeleteItem, editingLogKey]);
 
   const { startDateStr, endDateStr, displayTitle } = useMemo(() => {
     if (timeFilter === 'day') {
@@ -200,8 +212,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     else setCurrentDate((d) => addDays(d, 30));
   };
 
-  const handleDelete = async (record: HealthLogRecord) => {
-    if (!confirm(`Delete "${record.name}" from telemetry log?`)) return;
+  const executeDelete = async (record: HealthLogRecord) => {
     setDeletingKey(record.rowKey);
     try {
       await deleteLogRecord(record.rowKey, record.partitionKey);
@@ -212,6 +223,32 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     } finally {
       setDeletingKey(null);
     }
+  };
+
+  const handleDeleteClick = (record: HealthLogRecord) => {
+    let skipWarning = false;
+    try {
+      skipWarning = localStorage.getItem(SKIP_DELETE_WARNING_KEY) === 'true';
+    } catch (_) {}
+
+    if (skipWarning) {
+      executeDelete(record);
+    } else {
+      setPendingDeleteItem(record);
+      setDontShowDeleteWarning(false);
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    if (!pendingDeleteItem) return;
+    if (dontShowDeleteWarning) {
+      try {
+        localStorage.setItem(SKIP_DELETE_WARNING_KEY, 'true');
+      } catch (_) {}
+    }
+    const itemToDelete = pendingDeleteItem;
+    setPendingDeleteItem(null);
+    executeDelete(itemToDelete);
   };
 
   const aggregations = useMemo(() => aggregateLogs(logs), [logs]);
@@ -739,12 +776,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         handleRelogClick(item);
                       }}
                       disabled={reloggingKey === item.rowKey || deletingKey === item.rowKey}
-                      title="Copy item to today"
-                      aria-label="Copy item to today"
-                      className="p-1.5 rounded-[5px] border border-[rgba(255,255,255,0.25)] text-white opacity-40 hover:opacity-100 transition-opacity duration-300 disabled:opacity-10 cursor-pointer"
+                      title={copiedKey === item.rowKey ? 'Copied to today!' : 'Copy item to today'}
+                      aria-label={copiedKey === item.rowKey ? 'Copied to today' : 'Copy item to today'}
+                      className={`p-1.5 rounded-[5px] border transition-all duration-300 disabled:opacity-10 cursor-pointer ${
+                        copiedKey === item.rowKey
+                          ? 'border-[#3FB950] text-[#3FB950] opacity-100 scale-105'
+                          : 'border-[rgba(255,255,255,0.25)] text-white opacity-40 hover:opacity-100'
+                      }`}
                     >
                       {reloggingKey === item.rowKey ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : copiedKey === item.rowKey ? (
+                        <Check className="w-3.5 h-3.5 animate-in zoom-in-75 duration-200" />
                       ) : (
                         <Copy className="w-3.5 h-3.5" />
                       )}
@@ -753,14 +796,18 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDelete(item);
+                        handleDeleteClick(item);
                       }}
                       disabled={deletingKey === item.rowKey || reloggingKey === item.rowKey}
                       title="Delete log"
                       aria-label="Delete entry"
                       className="p-1.5 rounded-[5px] border border-[rgba(255,255,255,0.25)] text-white opacity-40 hover:opacity-100 transition-opacity duration-300 disabled:opacity-10 cursor-pointer"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {deletingKey === item.rowKey ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -826,6 +873,68 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               >
                 <Copy className="w-3.5 h-3.5" />
                 <span>Copy to Today</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Warning Modal */}
+      {pendingDeleteItem && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+        >
+          <div className="bg-black border border-[rgba(255,255,255,0.5)] rounded-[5px] p-5 max-w-sm w-full space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="space-y-1.5">
+              <div className="flex items-center space-x-2">
+                <div
+                  className={`w-[8px] h-[8px] rounded-full ${
+                    pendingDeleteItem.type === 'food' ? 'bg-[#3FB950]' : 'bg-[#E3B341]'
+                  }`}
+                  aria-hidden="true"
+                />
+                <h3 id="delete-modal-title" className="text-[0.95rem] font-medium text-white">
+                  Delete Telemetry Entry
+                </h3>
+              </div>
+              <p className="text-[0.855rem] text-white/70 leading-[1.6]">
+                This will permanently delete{' '}
+                <span className="font-semibold text-white">{pendingDeleteItem.name}</span>{' '}
+                ({pendingDeleteItem.type === 'food' ? `+${Math.round(pendingDeleteItem.calories)} kcal` : `-${Math.round(pendingDeleteItem.calories)} kcal`}){' '}
+                from your recorded telemetry logs.
+              </p>
+            </div>
+
+            {/* Do not show again checkbox */}
+            <label className="flex items-center space-x-2.5 text-[0.76rem] text-white/60 hover:text-white cursor-pointer select-none transition-colors duration-300">
+              <input
+                type="checkbox"
+                checked={dontShowDeleteWarning}
+                onChange={(e) => setDontShowDeleteWarning(e.target.checked)}
+                className="w-3.5 h-3.5 rounded-[3px] border border-[rgba(255,255,255,0.4)] bg-transparent accent-white cursor-pointer"
+              />
+              <span>Do not show again</span>
+            </label>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-[rgba(255,255,255,0.15)]">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteItem(null)}
+                className="px-3 py-1.5 rounded-[5px] text-[0.855rem] text-white/50 hover:text-white transition-colors duration-300 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-[5px] border border-[rgba(255,255,255,0.5)] hover:border-white text-[0.855rem] font-medium text-white bg-transparent opacity-80 hover:opacity-100 transition-all duration-300 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete</span>
               </button>
             </div>
           </div>

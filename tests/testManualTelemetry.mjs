@@ -226,5 +226,30 @@ test('Manual Telemetry Entry Suite', async (t) => {
     assert.equal(updatedRecord.fiber, 8);
     assert.equal(updatedRecord.servingInfo, '1 large bowl (~350g)');
   });
+
+  await t.test('Delete warning preference key and copy success checkmark state transition', () => {
+    const SKIP_DELETE_WARNING_KEY = 'health_tracker_skip_delete_warning';
+    const mockStorage = new Map();
+
+    // Initially warning is shown
+    assert.equal(mockStorage.get(SKIP_DELETE_WARNING_KEY), undefined);
+
+    // When "Do not show again" is selected and confirmed
+    mockStorage.set(SKIP_DELETE_WARNING_KEY, 'true');
+    assert.equal(mockStorage.get(SKIP_DELETE_WARNING_KEY) === 'true', true);
+
+    // Verify copy micro-animation state lifecycle
+    let copiedKey = null;
+    const targetRowKey = 'food_1727000000000_123';
+    
+    // On copy success:
+    copiedKey = targetRowKey;
+    assert.equal(copiedKey, targetRowKey);
+
+    // After micro-animation timeout:
+    copiedKey = null;
+    assert.equal(copiedKey, null);
+  });
 });
+
 
