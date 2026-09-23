@@ -127,13 +127,13 @@ Set up Azure Cosmos DB for NoSQL for this project using my active Azure CLI logi
 
 ## bonus
 
-if you want to turn this into an app on your phone, you can, check out the [INSTALL_AS_APP.md](./INSTALL_AS_APP.md)
+if you want to turn this into an app on your phone, you can, check out the [INSTALL_AS_APP.md](./docs/INSTALL_AS_APP.md)
 
 ## details
 
 ### how the agent works
 
-check out [AGENT.md](./AGENT.md) if interested in details like the architecture, guidance, and common covered use cases of the agent.
+check out [AGENT.md](./docs/AGENT.md) if interested in details like the architecture, guidance, and common covered use cases of the agent.
 
 ### anything else
 
