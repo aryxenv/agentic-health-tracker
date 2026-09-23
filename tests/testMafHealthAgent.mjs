@@ -29,6 +29,8 @@ test('MAF Health Agent System Initialization and Tool Execution', async (t) => {
     assert.equal(system.tools.consultNutritionTool.name, 'consult_nutrition_specialist');
     assert.ok(system.tools.consultActivityTool, 'consult_activity_specialist tool must be registered');
     assert.equal(system.tools.consultActivityTool.name, 'consult_activity_specialist');
+    assert.ok(system.tools.consultDataExplorerTool, 'consult_data_explorer tool must be registered');
+    assert.equal(system.tools.consultDataExplorerTool.name, 'consult_data_explorer');
   });
 
   await t.test('Open Food Facts tool is registered and exposes search_open_food_facts', async () => {
@@ -177,6 +179,25 @@ test('MAF Health Agent System Initialization and Tool Execution', async (t) => {
     const searchResult = await dataTool.execute({ time_filter: 'all', search_query: 'nuts' });
     assert.ok(searchResult, 'Search query should execute');
     assert.equal(searchResult.filterApplied.search_query, 'nuts');
+
+    // Test dynamic model-driven start_date and end_date
+    const dateRangeResult = await dataTool.execute({
+      start_date: '2026-09-20',
+      end_date: '2026-09-21'
+    });
+    assert.ok(dateRangeResult, 'Dynamic date range should execute');
+    assert.equal(dateRangeResult.filterApplied.startDate, '2026-09-20');
+    assert.equal(dateRangeResult.filterApplied.endDate, '2026-09-21');
+  });
+
+  await t.test('Brussels calendar context helper returns valid local timezone data', async () => {
+    const { getBrusselsNow } = await import('../api/dist/src/services/calculations.js');
+    const brussels = getBrusselsNow();
+    assert.ok(brussels.dateStr, 'dateStr must exist');
+    assert.match(brussels.dateStr, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(brussels.timeStr, 'timeStr must exist');
+    assert.ok(brussels.dayOfWeek, 'dayOfWeek must exist');
+    assert.ok(brussels.formatted.includes('Europe/Brussels'));
   });
 });
 

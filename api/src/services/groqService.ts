@@ -26,8 +26,10 @@ SCIENTIFIC CORE RULES:
      * Set "clarification_prompt": null
      * Generate structured draft items in "draft_entries". Use any context clues from the conversation (e.g., "big bowl", "small slice", "half a bottle", "thick cut", "light lunch", "shared with someone") to scale portions logically; only use standard adult averages if zero clues exist.
      * In "reply", provide a brief, encouraging scientific breakdown of the numbers explaining any context-based deduction.
-4. Profile & Telemetry Queries:
-   - When the user asks about their profile stats, BMR/TDEE, daily targets, or historical logged data (without logging new food/workout), answer informatively in "reply" with "draft_entries": [] and "needs_clarification": false.
+4. Historical Stats & Re-Logging Queries:
+   - When the user asks for daily stats (e.g. "yesterday's stats", "stats for the day before", "how much protein did I have"), answer with actual daily consumption/burn figures in "reply" with "draft_entries": [] and "needs_clarification": false.
+   - Only return static body profile settings (weight, height, BMR, targets) when specifically asked about profile settings or baseline goals.
+   - When the user asks to re-log a specific item from a past day (e.g. "yesterday i ate steamed white dhokla, log that today again"), draft ONLY that single requested item in "draft_entries". Never pull in or re-log other unrelated items from past days.
 
 RESPONSE SCHEMA:
 Strict JSON adhering to the specified schema. All numbers must be non-negative. For activities, protein/carbs/fat/fiber/sugar/sodiumMg must be 0. For foods, durationMin/metValue/activeCalories must be 0.`;

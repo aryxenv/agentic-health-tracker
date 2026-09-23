@@ -117,45 +117,61 @@ export function aggregateLogs(logs: HealthLogRecord[]) {
   };
 }
 
+export function getBrusselsNow(refDate: Date = new Date()) {
+  const dateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Brussels',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(refDate);
+
+  const timeStr = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Brussels',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(refDate);
+
+  const dayOfWeek = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Brussels',
+    weekday: 'long'
+  }).format(refDate);
+
+  return {
+    dateStr,
+    timeStr,
+    dayOfWeek,
+    formatted: `${dateStr} ${timeStr} (${dayOfWeek}, Europe/Brussels)`
+  };
+}
+
 export function getDateRangeForFilter(
-  filter?: string,
-  customStart?: string,
-  customEnd?: string
+  param1?: string,
+  param2?: string,
+  param3?: string
 ): { startDateStr?: string; endDateStr?: string } {
-  if (customStart) {
-    return {
-      startDateStr: customStart,
-      endDateStr: customEnd || customStart
-    };
+  const isDate = (s?: string) => Boolean(s && /^\d{4}-\d{2}-\d{2}$/.test(s.trim()));
+
+  // Direct start_date as first argument: getDateRangeForFilter('2026-09-22', '2026-09-22')
+  if (isDate(param1)) {
+    const start = param1!.trim();
+    const end = isDate(param2) ? param2!.trim() : start;
+    return { startDateStr: start, endDateStr: end };
   }
 
-  const now = new Date();
-  const toDateStr = (d: Date) => d.toISOString().slice(0, 10);
+  // start_date as second argument: getDateRangeForFilter(timeFilter, '2026-09-22', '2026-09-22')
+  if (isDate(param2)) {
+    const start = param2!.trim();
+    const end = isDate(param3) ? param3!.trim() : start;
+    return { startDateStr: start, endDateStr: end };
+  }
 
-  if (filter === 'yesterday') {
-    const y = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const yStr = toDateStr(y);
-    return { startDateStr: yStr, endDateStr: yStr };
-  }
-  if (filter === 'this_week') {
-    const d = new Date(now);
-    const day = d.getDay();
-    const diff = (day === 0 ? -6 : 1) - day;
-    d.setDate(d.getDate() + diff);
-    return { startDateStr: toDateStr(d), endDateStr: toDateStr(now) };
-  }
-  if (filter === 'last_7_days') {
-    const past = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    return { startDateStr: toDateStr(past), endDateStr: toDateStr(now) };
-  }
-  if (filter === 'this_month') {
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { startDateStr: toDateStr(firstDay), endDateStr: toDateStr(now) };
-  }
+  const filter = String(param1 || '').toLowerCase().trim();
   if (filter === 'all') {
     return { startDateStr: undefined, endDateStr: undefined };
   }
-  // Default: 'today'
-  const todayStr = toDateStr(now);
-  return { startDateStr: todayStr, endDateStr: todayStr };
+
+  // Default fallback: today in Brussels
+  const { dateStr } = getBrusselsNow();
+  return { startDateStr: dateStr, endDateStr: dateStr };
 }

@@ -18,6 +18,7 @@ import {
   calculateMacroTargets,
   aggregateLogs,
   getDateRangeForFilter,
+  getBrusselsNow,
 } from "./calculations";
 
 dotenv.config();
@@ -774,71 +775,61 @@ export function createHealthAgentSystem(
                   "Total calories: food calories consumed, or TOTAL calories burned during activity",
               },
               protein: {
-                type: "number",
+                type: ["number", "null"],
                 description: "Protein in grams (0 for activity)",
               },
               carbs: {
-                type: "number",
+                type: ["number", "null"],
                 description: "Carbohydrates in grams (0 for activity)",
               },
               fat: {
-                type: "number",
+                type: ["number", "null"],
                 description: "Fat in grams (0 for activity)",
               },
               fiber: {
-                type: "number",
+                type: ["number", "null"],
                 description: "Dietary fiber in grams (0 for activity)",
               },
               sugar: {
-                type: "number",
+                type: ["number", "null"],
                 description: "Sugar in grams (0 for activity)",
               },
               sodiumMg: {
-                type: "number",
+                type: ["number", "null"],
                 description: "Sodium in mg (0 for activity)",
               },
               mealType: {
-                type: "string",
-                enum: ["breakfast", "lunch", "dinner", "snack", "workout"],
-                description: "Meal type ('workout' for activity)",
+                type: ["string", "null"],
+                description: "Meal type ('breakfast', 'lunch', 'dinner', 'snack', 'workout')",
               },
               durationMin: {
-                type: "number",
+                type: ["number", "null"],
                 description: "Duration of workout in minutes (0 for food)",
               },
               metValue: {
-                type: "number",
+                type: ["number", "null"],
                 description: "Adult Compendium MET value (0 for food)",
               },
               activeCalories: {
-                type: "number",
+                type: ["number", "null"],
                 description:
                   "Net active calories burned above resting metabolism (0 for food)",
               },
               modality: {
-                type: "string",
-                enum: [
-                  "none",
-                  "cardio",
-                  "strength_training",
-                  "hiit",
-                  "walking",
-                  "sports",
-                ],
-                description: "Workout modality ('none' for food)",
+                type: ["string", "null"],
+                description: "Workout modality ('cardio', 'strength_training', 'hiit', 'walking', 'sports', 'none')",
               },
               intensity: {
-                type: "string",
-                enum: ["none", "low", "moderate", "vigorous", "near_max"],
-                description: "Workout intensity ('none' for food)",
+                type: ["string", "null"],
+                description: "Workout intensity ('low', 'moderate', 'vigorous', 'near_max', 'none')",
               },
               servingInfo: {
-                type: "string",
+                type: ["string", "null"],
                 description:
                   "Serving description or distance/duration (e.g. '30 mins (6 km)' or '200g')",
               },
               details: {
-                type: "string",
+                type: ["string", "null"],
                 description: "Nutritional or biomechanical notes",
               },
             },
@@ -902,7 +893,7 @@ export function createHealthAgentSystem(
   const getUserProfileTool = tool({
     name: "get_user_profile",
     description:
-      "Retrieve the user's calibrated physical profile (weight, height, age, sex, activity level, health goal, training routine focus) and derived metabolic targets (BMR, TDEE, dynamic target calories, and ISSN macro targets: protein, fat, carbs, fiber, sugar ceiling, sodium ceiling). Use this when answering questions about the user's personal stats, goals, recommended targets, or personal calibrations.",
+      "Retrieve the user's static physical body profile (weight, height, age, sex, activity level, health goal, training routine focus) and baseline calculated target goals (BMR, TDEE, dynamic target calories, target macro grams). Use ONLY when the user asks about their body metrics, profile settings, or target goals (e.g. 'what is my BMR?', 'what is my protein target?'). Do NOT use this tool for daily telemetry stats or actual consumed/burned calories—use get_user_data for that.",
     parameters: {
       type: "object",
       properties: {
@@ -994,32 +985,24 @@ export function createHealthAgentSystem(
   const getUserDataTool = tool({
     name: "get_user_data",
     description:
-      "Retrieve historical logged food items, exercises, and aggregated telemetry from the user's collection (as displayed on the Data tab). Supports flexible filtering by time range (today, yesterday, this_week, last_7_days, this_month, custom, all), log type (food, activity, or all), meal type, or keyword search.",
+      "Retrieve historical logged food items, exercises, and aggregated telemetry (intake calories, active burn, net calories, protein, carbs, fat, fiber, sugar, sodium) from the user's collection. ALWAYS use this tool for actual logged data, daily stats, or retrieving past items to re-log over any date range (start_date, end_date).",
     parameters: {
       type: "object",
       properties: {
-        time_filter: {
-          type: "string",
-          enum: [
-            "today",
-            "yesterday",
-            "this_week",
-            "last_7_days",
-            "this_month",
-            "custom",
-            "all",
-          ],
-          description: "Convenient time filter preset. Defaults to 'today'.",
-        },
         start_date: {
           type: "string",
           description:
-            "Start date in 'YYYY-MM-DD' format (used when time_filter is 'custom' or specific date requested).",
+            "Start date in 'YYYY-MM-DD' format (e.g. '2026-09-22'). Compute dynamically based on current time (e.g. yesterday = today-1, day before = today-2).",
         },
         end_date: {
           type: "string",
           description:
-            "End date in 'YYYY-MM-DD' format (optional, defaults to start_date or today).",
+            "End date in 'YYYY-MM-DD' format (optional, defaults to start_date for single-day queries).",
+        },
+        time_filter: {
+          type: "string",
+          description:
+            "Optional filter keyword if start_date is not provided (e.g. 'all').",
         },
         type: {
           type: "string",
@@ -1035,7 +1018,7 @@ export function createHealthAgentSystem(
         search_query: {
           type: "string",
           description:
-            "Optional keyword search filter (e.g. 'banana', 'running', 'shake', 'oats').",
+            "Optional keyword search filter (e.g. 'dhokla', 'banana', 'running', 'shake').",
         },
         include_aggregations: {
           type: "boolean",
@@ -1056,14 +1039,14 @@ export function createHealthAgentSystem(
     },
     execute: async (args: any) => {
       const { startDateStr, endDateStr } = getDateRangeForFilter(
-        args?.time_filter,
         args?.start_date,
         args?.end_date,
+        args?.time_filter,
       );
 
       emit(
         "tool_call",
-        `Retrieving health collection data (${args?.time_filter || "today"}${startDateStr ? `: ${startDateStr}` : ""})`,
+        `Retrieving health collection data (${startDateStr || "unbounded"}${endDateStr && endDateStr !== startDateStr ? ` to ${endDateStr}` : ""})`,
         {
           toolName: "get_user_data",
           args: {
@@ -1189,8 +1172,6 @@ Your duty:
     tools: [
       openFoodFactsTool,
       webSearchTool,
-      getUserProfileTool,
-      getUserDataTool,
     ],
   });
 
@@ -1210,6 +1191,33 @@ Your duty:
     tools: [metExpenditureTool],
   });
 
+  // Subagent 3: Data Explorer Specialist
+  const brusselsNow = getBrusselsNow();
+
+  const dataExplorer = new Agent({
+    client,
+    name: "DataExplorer",
+    description:
+      "Expert health data explorer subagent that navigates historical telemetry, performs daily/weekly/monthly statistical aggregations, and retrieves specific past logged items to re-log.",
+    instructions: `You are the Data Explorer subagent for Health Agent.
+Current Time Context: ${brusselsNow.formatted} (today: ${brusselsNow.dateStr}, day: ${brusselsNow.dayOfWeek}).
+
+Your duty:
+1. Dynamic Date Reasoning:
+   - Use your sense of current time to dynamically calculate start_date and end_date (YYYY-MM-DD) for any query (e.g. yesterday = today - 1 day, the day before = today - 2 days, this week = Monday of current week to today, this month = 1st of month to today).
+2. Daily & Historical Stats Queries (e.g. "get yesterdays stats", "stats for the day before", "how is my week going so far", "did I hit my targets"):
+   - Call "get_user_data" with the calculated start_date and end_date.
+   - If comparison with daily targets is requested, call "get_user_profile" to compare actuals against targets.
+   - If a requested date has 0 entries, report clearly that no logs were recorded on that date. Do not substitute profile targets as if they were consumption stats.
+   - Return a clear, concise breakdown of calories in, active burn, net balance, and macronutrients.
+3. Re-Logging Past Items (e.g. "find yesterday's steamed white dhokla", "what portion of oatmeal did I have 2 days ago"):
+   - Call "get_user_data" with the calculated start_date and search_query.
+   - Locate the matching entry.
+   - Return ONLY the exact nutritional and portion details of that specific matching item (name, calories, protein, carbs, fat, fiber, sugar, sodium, servingInfo, mealType).
+   - NEVER return other unrelated items from that day. If multiple matches exist, return the most recent one.`,
+    tools: [getUserDataTool, getUserProfileTool],
+  });
+
   // Expose Subagents as Tools using agentAsTool
   const consultNutritionTool = agentAsTool(nutritionSpecialist, {
     name: "consult_nutrition_specialist",
@@ -1221,6 +1229,12 @@ Your duty:
     name: "consult_activity_specialist",
     description:
       "Consult the Physical Activity Specialist to calculate MET and energy expenditure.",
+  });
+
+  const consultDataExplorerTool = agentAsTool(dataExplorer, {
+    name: "consult_data_explorer",
+    description:
+      "Consult the Data Explorer specialist to query historical telemetry logs, get daily/weekly/monthly stats, explore progress over time, or find a specific food item or workout logged on a previous day to re-log it today.",
   });
 
   // Primary Health Agent Orchestrator
@@ -1236,60 +1250,28 @@ Your duty:
 - Training Routine Focus: ${userProfile.trainingFocus || 'cardio'}`;
   }
 
-  const primaryInstructions = `You are the Health Agent: an elite, scientifically rigorous health, nutrition, and physical activity tracking agent.
+  const primaryInstructions = `You are the Health Agent: an elite, scientifically rigorous health, nutrition, and physical activity tracking orchestrator.
 
-SCIENTIFIC CORE RULES:
-1. Nutrition data:
-   - For all food consumption logging, consult the Nutrition Specialist (call "consult_nutrition_specialist") to calculate portion-scaled calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
-2. Physical activity & energy expenditure:
-   - For workouts, exercises, and physical activities, consult the Physical Activity Specialist (call "consult_activity_specialist") to calculate Adult Compendium MET values and energy expenditure.
-   - Total Calories Burned = MET * weight_kg * (duration_minutes / 60).
-   - Net Active Calories = (MET - 1) * weight_kg * (duration_minutes / 60).
-   - Use user's profile weight (${userProfile?.weightKg || 70}kg).
-3. Ambiguity & Clarification Protocol:
-   - CONTEXTUAL CULINARY ESTIMATION (Avoid unnecessary friction):
-     * When user input includes standard culinary additions, spreads, or condiments without exact weights/measures (e.g. "olive oil layer spread on it", "spread of butter", "dash of cinnamon", "splash of milk", "salad dressing"):
-       - Do NOT stop to ask for clarification!
-       - Make a sensible contextual culinary assumption (e.g. a spread of olive oil on khakra/toast = ~1 tsp / 5ml = ~40 kcal).
-       - Proceed directly with logging: call consult_nutrition_specialist, then call record_health_log with needs_clarification: false, draft_entries populated, and transparently mention your reasonable assumption in your reply.
-   - CRITICAL AMBIGUITY:
-     * Only ask for clarification if critical information is completely missing and impossible to estimate (e.g. completely unknown food name, or workout with zero activity name or zero duration).
-     * In that case, call record_health_log immediately with needs_clarification: true, draft_entries: [], and clarification_prompt set, WITHOUT calling consult_nutrition_specialist or searching for other items first!
-   - ESTIMATION REQUEST:
-     * When user input is clear OR if the user replies "estimate":
-       - Set needs_clarification: false, clarification_prompt: null.
-       - Use context clues from the conversation (size adjectives, meal types) to scale portions logically, call consult_nutrition_specialist, and call record_health_log with draft_entries.
-       * Structure each entry in draft_entries:
-         - "type": "food" | "activity"
-         - "name": descriptive name (e.g. "Cycling (moderate)", "Grilled Chicken Breast")
-         - "calories": total calories (calories consumed for food, or TOTAL calories burned during activity)
-         - For activity:
-           * "durationMin": minutes (e.g. 30)
-           * "metValue": Adult Compendium MET value (e.g. 7.5)
-           * "activeCalories": net active calories burned above resting metabolism (e.g. 192)
-           * "modality": "cardio" | "strength_training" | "hiit" | "walking" | "sports"
-           * "intensity": "low" | "moderate" | "vigorous" | "near_max"
-           * "servingInfo": duration and distance if applicable (e.g. "30 mins (6 km)")
-           * "mealType": "workout"
-         - For food:
-           * "protein", "carbs", "fat", "fiber", "sugar", "sodiumMg", "mealType", "servingInfo"
-4. MULTI-TURN CONVERSATION AWARENESS:
-   - Carefully interpret conversational context from prior turns.
-   - If the user modifies, corrects, or appends items (e.g. "actually make that 3 eggs", "add 1 banana", "change to 45 mins"):
-     * Reconcile changes against previous items.
-     * Always pass the COMPLETE, updated set of draft entries to record_health_log.
-5. EXECUTION SEQUENCE:
-   - If critical information is missing and cannot be estimated: call "record_health_log" with needs_clarification: true immediately.
-   - Otherwise, consult specialist subagents (consult_nutrition_specialist or consult_activity_specialist) to compute the numbers.
-   - SINGLE INVOCATION RULE: Call consult_nutrition_specialist at most ONCE with all food items from the user request. Once the subagent returns its nutritional breakdown, do NOT call consult_nutrition_specialist again. Immediately proceed to call record_health_log.
-   - Next, call "record_health_log" with the complete draft_entries, needs_clarification: false, and your reply.
-   - After record_health_log returns, write a concise, encouraging scientific summary to the user as normal text and conclude.
-6. USER PROFILE & HISTORICAL COLLECTION RETRIEVAL PROTOCOL:
-   - You have 2 dedicated tools for user profile and collection retrieval:
-     * "get_user_profile": Retrieves the user's calibrated physical profile (weight, height, age, sex, activity level, health goal, training routine focus) and derived metabolic targets (BMR, TDEE, dynamic target calories, protein target & multiplier, fat, carbs, fiber, sugar ceiling, sodium ceiling).
-     * "get_user_data": Retrieves logged food items, exercises, and aggregated telemetry from the user's collection (as displayed on the Data tab).
-   - INFORMATION RETRIEVAL VS LOGGING:
-     * If the user is only asking for profile stats or historical logged data (without logging new food or workout), do NOT invent or create new draft entries! Call record_health_log with draft_entries: [], needs_clarification: false, and provide your helpful answer in reply.
+SPECIALIST ROUTING RULES:
+1. Historical data, stats, and re-logging past items:
+   - When the user asks about historical data, daily stats (yesterday, day before, today), weekly progress, or wants to repeat/re-log an item from the past (e.g. "yesterday i ate steamed white dhokla, log that today again", "how is my week going", "get yesterdays stats"):
+     * Call "consult_data_explorer" to retrieve the data or find the past item.
+     * When re-logging a past item, Data Explorer will return that specific item. Call "record_health_log" with ONLY that single draft entry for today. NEVER pull in other unrelated items from past days!
+     * For pure stats/history questions, call "record_health_log" with draft_entries: [], needs_clarification: false, and provide your helpful summary in reply.
+2. New food consumption logging:
+   - For new food items, meals, or ingredients not from past logs, consult the Nutrition Specialist (call "consult_nutrition_specialist") to calculate portion-scaled calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
+3. Physical activity & energy expenditure:
+   - For workouts and exercises, consult the Physical Activity Specialist (call "consult_activity_specialist") to calculate Adult Compendium MET values and energy expenditure.
+   - Total Burn = MET * weight_kg * (duration_min / 60); Net Active Burn = (MET - 1) * weight_kg * (duration_min / 60). Use profile weight (${userProfile?.weightKg || 70}kg).
+4. Ambiguity & Clarification Protocol:
+   - Culinary additions/condiments without exact weight (spread of olive oil, butter, dash of salt): make a reasonable culinary assumption (e.g. 1 tsp olive oil = ~40 kcal), do NOT ask for clarification.
+   - Only set needs_clarification: true if critical details are completely missing (e.g. completely unknown food name, or exercise with no duration).
+5. Multi-turn conversational context:
+   - Only modify draft entries if the user is explicitly correcting the current unconfirmed draft (e.g. "make that 3 eggs", "change to 45 min").
+   - When the user starts a new logging request or asks to re-log a past item, draft ONLY the newly requested item(s). Do not carry forward prior conversation items.
+6. Execution Sequence:
+   - Consult the appropriate specialist (consult_data_explorer, consult_nutrition_specialist, or consult_activity_specialist).
+   - Call "record_health_log" with draft_entries, needs_clarification, and your reply. Conclude with a concise, encouraging scientific summary.
 ${userContext}`;
 
   const healthAgent = new Agent({
@@ -1297,8 +1279,7 @@ ${userContext}`;
     name: "HealthAgent",
     instructions: primaryInstructions,
     tools: [
-      getUserProfileTool,
-      getUserDataTool,
+      consultDataExplorerTool,
       consultNutritionTool,
       consultActivityTool,
       recordHealthLogTool,
@@ -1318,6 +1299,7 @@ ${userContext}`;
       recordHealthLogTool,
       consultNutritionTool,
       consultActivityTool,
+      consultDataExplorerTool,
       getUserProfileTool,
       getUserDataTool,
     },
@@ -1360,9 +1342,9 @@ LATEST USER REQUEST:
 "${latestMessage}"
 
 CONTEXT INSTRUCTIONS:
-- Resolve any relative references, pronouns, modifications, or additions in the latest request using the conversation history above.
-- If the user is correcting or updating a previous item (e.g. "make that 3 eggs", "change to 45 min"), regenerate the complete telemetry with the updated values.
-- Call record_health_log with all updated entries.`;
+- Resolve any relative references, pronouns, or item names in the latest request using the conversation history above.
+- If the user is modifying or correcting the immediately preceding draft in this active session (e.g. "make that 3 eggs", "change to 45 min"), update that draft and call record_health_log with the updated entries.
+- If the user is starting a NEW logging request or asking to re-log a past item (e.g. "yesterday i ate steamed white dhokla, log that today again", "log 1 banana for snack"), log ONLY the item(s) requested in this message. Do NOT carry forward old items from prior meals or past queries.`;
   }
 
   emit(
@@ -1370,7 +1352,7 @@ CONTEXT INSTRUCTIONS:
     `Deconstructing request: "${latestMessage.slice(0, 60)}${latestMessage.length > 60 ? "..." : ""}"`,
     {
       thought:
-        "Classifying domain (food intake vs physical activity) and checking completeness of portions/duration.",
+        "Classifying domain (food intake vs physical activity vs historical telemetry) and checking completeness of portions/duration.",
     },
   );
 
@@ -1398,7 +1380,7 @@ CONTEXT INSTRUCTIONS:
                   "Deliberating health telemetry & domain context",
                   {
                     thought:
-                      "Evaluating input against live online nutrition facts and Adult Compendium MET standards.",
+                      "Evaluating input against live online nutrition facts, historical telemetry, and Adult Compendium MET standards.",
                   },
                 );
                 hasEmittedReasoningThought = true;
@@ -1416,6 +1398,12 @@ CONTEXT INSTRUCTIONS:
                 emit(
                   "tool_call",
                   "Consulting Physical Activity Specialist subagent",
+                  { toolName: fc.name },
+                );
+              } else if (fc.name === "consult_data_explorer") {
+                emit(
+                  "tool_call",
+                  "Consulting Data Explorer subagent",
                   { toolName: fc.name },
                 );
               } else if (fc.name === "search_web") {

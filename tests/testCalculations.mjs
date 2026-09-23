@@ -221,3 +221,28 @@ test('Aggregate Logs: Net Balance and Macronutrient Sums', () => {
   assert.strictEqual(agg.totalProtein, 35);
   assert.strictEqual(agg.totalFiber, 8);
 });
+
+test('getDateRangeForFilter: Direct model-driven dates & Brussels fallback', async () => {
+  const { getDateRangeForFilter, getBrusselsNow } = await import('../api/dist/src/services/calculations.js');
+
+  // Direct single date
+  const single = getDateRangeForFilter('2026-09-21');
+  assert.strictEqual(single.startDateStr, '2026-09-21');
+  assert.strictEqual(single.endDateStr, '2026-09-21');
+
+  // Direct range
+  const range = getDateRangeForFilter('2026-09-01', '2026-09-23');
+  assert.strictEqual(range.startDateStr, '2026-09-01');
+  assert.strictEqual(range.endDateStr, '2026-09-23');
+
+  // Unbounded
+  const all = getDateRangeForFilter('all');
+  assert.strictEqual(all.startDateStr, undefined);
+  assert.strictEqual(all.endDateStr, undefined);
+
+  // Default to Brussels today
+  const brussels = getBrusselsNow();
+  const def = getDateRangeForFilter();
+  assert.strictEqual(def.startDateStr, brussels.dateStr);
+  assert.strictEqual(def.endDateStr, brussels.dateStr);
+});
