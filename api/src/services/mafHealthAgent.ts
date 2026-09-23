@@ -120,6 +120,10 @@ export class GroqChatClient extends OpenAIChatClient {
         (item: any) => item.type !== "reasoning",
       );
     }
+    // Strict Groq OTPM safeguard: Qwen on Groq enforces 1000 OTPM max
+    if (String(request.model || "").includes("qwen")) {
+      request.max_output_tokens = 950;
+    }
     return request;
   }
 }
@@ -328,11 +332,10 @@ export function createHealthAgentSystem(
       const data: any = await response.json();
       const result = {
         query,
-        directAnswer: data.answer || null,
-        results: (data.results || []).slice(0, 3).map((r: any) => ({
+        answer: data.answer || null,
+        snippets: (data.results || []).slice(0, 2).map((r: any) => ({
           title: r.title,
-          url: r.url,
-          content: r.content,
+          content: String(r.content || "").slice(0, 220),
         })),
         source: "Tavily Live Web Search",
       };
@@ -780,7 +783,8 @@ export function createHealthAgentSystem(
         },
         draft_entries: {
           type: "array",
-          description: "List of drafted food or exercise entries",
+          description:
+            "List of drafted food or exercise entries. For multi-item food logs, each distinct food or ingredient MUST have its own individual DraftEntry object. Never lump multiple distinct items into a single compound entry.",
           items: {
             type: "object",
             properties: {
@@ -1182,26 +1186,31 @@ export function createHealthAgentSystem(
       "Expert nutritionist subagent that retrieves verified online nutrition facts, Belgian/European supermarket products, and calculates portion-scaled macronutrients.",
     instructions: `You are the Nutrition Specialist subagent for Health Agent.
 Your duty:
-1. Food Decomposition Protocol:
-   - When a user food log contains multiple ingredients, a compound preparation, or a mixture (e.g., protein powder in milk/water, oatmeal with milk/honey, salad with dressing), decompose into each distinct item before computing or querying.
-   - Never query search tools with compound multi-item phrases (e.g. do not search "whey in milk"). Query or calculate each individual component separately.
-2. Standard Pantry Staples & Whole Foods (e.g., milk, oats, rice, chicken breast, eggs, olive oil, plain fruits, vegetables, nuts/seeds):
-   - Compute calories and macros from standard scientific/USDA food composition data per 100g/ml scaled to portion.
-   - For dairy liquid bases: standard whole milk per 100ml is ~64 kcal, 3.3g protein, 4.8g carbs (lactose), 3.6g fat, 4.8g sugar. Scale to requested volume (e.g. 300ml = ~192 kcal, 9.9g protein, 14.4g carbs, 10.8g fat, 14.4g sugar, 0g fiber).
-3. Packaged Commercial Grocery Products (e.g. XXL Nutrition, Melkunie, Alpro, Delhaize, Albert Heijn, Colruyt/Boni, Carrefour, Lidl, Aldi):
-   - Call "search_open_food_facts" with the individual product name.
-   - Tool returns raw unscaled facts per 100g/ml and stated serving size. Multiply per-100g values proportionally by (user portion in g or ml / 100).
-   - If not found or if Open Food Facts fails, call "search_web" via Tavily.
-4. Restaurant Meals, Regional Dishes, Takeaway, or Unfamiliar Items (e.g. jeera khakra, Belgian dishes, curries, bakery items):
-   - Call "search_web" via Tavily with ONE concise, comprehensive query (e.g. "<item name> nutrition calories protein carbs fat per piece/serving").
-   - NEVER make multiple micro-queries for individual nutrients. Formulate a single query to retrieve all nutritional metrics at once.
-5. Informal Unit Translation & Portion Scaling:
-   - When portion is given in discrete or informal counts (e.g., "5 pieces of walnuts", "2 slices of bread", "1 scoop"):
-     * Make a best-effort realistic translation from the count to scientific metric weight (grams/ml) based on the food's typical density (e.g. 5 walnut pieces = ~12.5g to 20g, 1 scoop whey = ~30g).
-     * State the assumed gram weight explicitly in the breakdown and servingInfo (e.g. "5 pieces (~15g)").
-   - If portion is completely missing (e.g. just "had walnuts" or "ate pasta"), note that clarification is needed.
-6. Accurately compute portion-scaled values: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
-7. Return a clear, concise structured breakdown for each food item.`,
+1. Itemization & Decomposition Protocol:
+   - When a user food log contains multiple ingredients, distinct foods, sides, or a mixture (e.g. "half ikea oftast bowl of plain thuli, 3 mini tomatoes, 3 baby carrots, 8 cucumber slices, 1 papad" or "protein powder in milk"):
+     * Decompose into EACH individual component.
+     * Never query tools with compound multi-item phrases (e.g. do not search "thuli with tomatoes"). Plan and process each individual component separately.
+2. Verification & Search Protocol:
+   - Packaged Commercial Grocery Products (e.g. XXL Nutrition, Melkunie, Alpro, Delhaize, Albert Heijn, Colruyt/Boni, Carrefour, Lidl, Aldi):
+     * Call "search_open_food_facts" with the individual product name.
+     * Use raw unscaled facts per 100g/ml and multiply proportionally by (user portion in g or ml / 100). If not found, call "search_web".
+   - Regional, Cultural, Ethnic Dishes or Container Sizes (e.g. thuli/lapsi, dalia, papad, khakhra, IKEA oftast bowl):
+     * Call "search_web" via Tavily with AT MOST ONE concise, comprehensive query (e.g. "<dish name> calories protein per 100g and <container> volume ml").
+     * NEVER execute multiple micro-queries or repetitive searches. Formulate one search and then calculate immediately.
+   - Standard Whole Foods & Pantry Staples (e.g. raw tomatoes, baby carrots, sliced cucumber, plain water, eggs, olive oil, whole milk):
+     * Compute calories and macros from standard scientific/USDA food composition data per 100g/ml scaled to portion.
+     * Whole milk per 100ml: ~64 kcal, 3.3g protein, 4.8g carbs, 3.6g fat, 4.8g sugar.
+3. Informal Unit Translation & Portion Scaling:
+   - When portion is given in discrete counts (e.g. "3 mini tomatoes", "3 baby carrots", "8 sliced pieces of cucumber", "1 papad", "5 walnuts"):
+     * Translate counts into realistic gram weights based on standard food density (e.g. 3 mini tomatoes ~45g, 3 baby carrots ~45g, 8 cucumber slices ~40g, 1 microwaved papad ~10-12g).
+     * State the assumed gram weight explicitly in servingInfo (e.g. "3 mini tomatoes (~45g)").
+4. Structured Itemized Output & Immediate Return:
+   - Execute AT MOST ONE search call total. Once the search returns (or if standard foods need no search), immediately finalize calculations and return your response. Do NOT perform subsequent search calls.
+   - For EACH decomposed food item, output a clear distinct block:
+     * Item: <name>
+     * Serving: <portion with estimated weight in grams or volume in ml>
+     * Nutrition: <calories> kcal, <protein>g protein, <carbs>g carbs, <fat>g fat, <fiber>g fiber, <sugar>g sugar, <sodiumMg>mg sodium
+   - Do NOT merge items together. Present each item distinctly so the orchestrator can record each as its own draft entry.`,
     tools: [
       openFoodFactsTool,
       webSearchTool,
@@ -1291,9 +1300,16 @@ SPECIALIST ROUTING RULES:
      * Call "consult_data_explorer" to retrieve the data or find the past item.
      * When re-logging a past item, Data Explorer will return that specific item. Call "record_health_log" with ONLY that single draft entry for today. NEVER pull in other unrelated items from past days!
      * For pure stats/history questions, call "record_health_log" with draft_entries: [], needs_clarification: false, and provide your helpful summary in reply.
-2. New food consumption logging:
+2. Food Consumption Logging & Decomposition:
    - If the user provides complete nutrition values (calories and macros), call "record_health_log" directly with those numbers.
    - For new food items, meals, or ingredients not from past logs, consult the Nutrition Specialist (call "consult_nutrition_specialist") to calculate portion-scaled calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
+   - CRITICAL FOOD SEPARATION RULE:
+     * When the user logs multiple distinct foods, ingredients, sides, or a snack plate (e.g. thuli, mini tomatoes, baby carrots, cucumber, papad):
+       You MUST emit a SEPARATE DraftEntry object in "draft_entries" of "record_health_log" for EACH distinct food item.
+       NEVER lump or aggregate multiple distinct food items into a single compound entry name (e.g. NEVER emit "Half Bowl Plain Thuli With Mini Tomatoes, Baby Carrots, Cucumber, Papad" as 1 entry).
+   - Breakdown / Refinement Requests:
+     * If the user asks to "break it down", "properly break it down", "split into items", or corrects portions of the current draft:
+       You MUST call "record_health_log" with the FULL LIST of separate itemized DraftEntry objects for each food item. NEVER output a text-only breakdown with draft_entries: []!
 3. Physical activity & energy expenditure:
    - For workouts and exercises, consult the Physical Activity Specialist (call "consult_activity_specialist") to calculate Adult Compendium MET values and energy expenditure.
    - Total Burn = MET * weight_kg * (duration_min / 60); Net Active Burn = (MET - 1) * weight_kg * (duration_min / 60). Use profile weight (${userProfile?.weightKg || 70}kg).
@@ -1301,11 +1317,12 @@ SPECIALIST ROUTING RULES:
    - Culinary additions/condiments without exact weight (spread of olive oil, butter, dash of salt): make a reasonable culinary assumption (e.g. 1 tsp olive oil = ~40 kcal), do NOT ask for clarification.
    - Only set needs_clarification: true if critical details are completely missing (e.g. completely unknown food name, or exercise with no duration).
 5. Multi-turn conversational context:
-   - Only modify draft entries if the user is explicitly correcting the current unconfirmed draft (e.g. "make that 3 eggs", "change to 45 min").
+   - Only modify draft entries if the user is explicitly correcting the current unconfirmed draft (e.g. "make that 3 eggs", "change to 45 min", "break it down").
    - When the user starts a new logging request or asks to re-log a past item, draft ONLY the newly requested item(s). Do not carry forward prior conversation items.
-6. Execution Sequence:
-   - Consult the appropriate specialist (consult_data_explorer, consult_nutrition_specialist, or consult_activity_specialist).
-   - Call "record_health_log" with draft_entries, needs_clarification, and your reply. Conclude with a concise, encouraging scientific summary.
+6. Execution Sequence & Single-Invocation Rule:
+   - Consult the specialist (consult_data_explorer, consult_nutrition_specialist, or consult_activity_specialist) EXACTLY ONCE.
+   - Once the specialist responds with nutritional or activity metrics, you MUST IMMEDIATELY call "record_health_log" with the separate draft entries.
+   - STRICT TERMINATION: NEVER call consult_nutrition_specialist or any specialist multiple times in a loop. One consultation is sufficient to finalize and record telemetry.
 ${userContext}`;
 
   const healthAgent = new Agent({
@@ -1379,6 +1396,7 @@ LATEST USER REQUEST:
 
 CONTEXT INSTRUCTIONS:
 - Resolve any relative references, pronouns, or item names in the latest request using the conversation history above.
+- If the user is asking to "break it down", "properly break it down", or split a prior compound draft entry into its individual components, decompose the meal and call record_health_log with a separate DraftEntry for each individual food item. NEVER return empty draft_entries for a breakdown request!
 - If the user is modifying or correcting the immediately preceding draft in this active session (e.g. "make that 3 eggs", "change to 45 min"), update that draft and call record_health_log with the updated entries.
 - If the user is starting a NEW logging request or asking to re-log a past item (e.g. "yesterday i ate steamed white dhokla, log that today again", "log 1 banana for snack"), log ONLY the item(s) requested in this message. Do NOT carry forward old items from prior meals or past queries.`;
   }
@@ -1553,11 +1571,7 @@ CONTEXT INSTRUCTIONS:
         err?.message?.toLowerCase().includes("tokens per day") ||
         err?.message?.includes("TPD");
 
-      const isOTPM =
-        err?.message?.includes("OTPM") ||
-        err?.message?.toLowerCase().includes("output tokens per minute");
-
-      if (isRateLimit && !isDailyLimit && !isOTPM && attempt < maxRetries) {
+      if (isRateLimit && !isDailyLimit && attempt < maxRetries) {
         let waitMs = (attempt + 1) * 3000;
         const retryAfterHeader =
           err?.headers?.["retry-after"] ||

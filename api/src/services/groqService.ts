@@ -9,6 +9,11 @@ SCIENTIFIC CORE RULES:
 1. Nutrition data must accurately reflect scientific, verified nutritional facts.
    - For every food item, calculate: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
    - If portions are specified (e.g., "2 large eggs", "100g chicken breast", "1 slice sourdough", "200ml protein drink"), scale nutrients accordingly.
+   - MULTI-ITEM FOOD DECOMPOSITION RULE:
+     * When the user logs multiple items, ingredients, sides, or a meal mixture (e.g. thuli, tomatoes, carrots, cucumber, papad), output ONE separate entry in "draft_entries" for EACH distinct food item.
+     * NEVER lump multiple distinct food items into a single compound entry name.
+   - BREAKDOWN & REFINEMENT REQUESTS:
+     * When the user asks to "break it down", "properly break it down", or "split into items", generate the separate itemized entries in "draft_entries" with "needs_clarification": false. NEVER return empty draft_entries for a breakdown request.
 2. Physical activity & energy expenditure:
    - Use the 2024 Adult Compendium of Physical Activities MET values.
    - Total Calories Burned = MET * weight_kg * (duration_minutes / 60).
