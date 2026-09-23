@@ -31,7 +31,8 @@ export async function sendChatMessageStream(
   onStep?: (step: AgenticStep) => void,
   onDelta?: (delta: string) => void,
   signal?: AbortSignal,
-  model?: string
+  model?: string,
+  onDeltaReset?: () => void
 ): Promise<ChatResponse & { steps?: AgenticStep[] }> {
   const response = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
@@ -93,6 +94,8 @@ export async function sendChatMessageStream(
             if (onStep) onStep(parsedData);
           } else if (currentEvent === 'delta') {
             if (onDelta && parsedData.delta) onDelta(parsedData.delta);
+          } else if (currentEvent === 'delta_reset') {
+            if (onDeltaReset) onDeltaReset();
           } else if (currentEvent === 'message') {
             finalMessage = parsedData;
           } else if (currentEvent === 'error') {

@@ -1,5 +1,10 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { runHealthAgentStream } from '../services/mafHealthAgent';
+import {
+  runHealthAgentStream,
+  AVAILABLE_MODEL_CHAIN,
+  getNextModelId,
+  isRateLimitError
+} from '../services/mafHealthAgent';
 import { processChatConversation } from '../services/groqService';
 import { AgenticStep, ChatMessage, UserProfile } from '../types/apiTypes';
 import * as dotenv from 'dotenv';
@@ -59,42 +64,70 @@ export async function chatHandler(
             }
           };
 
-          try {
-            const response = await runHealthAgentStream(
-              body.messages!,
-              body.userProfile,
-              (step) => {
-                sendEvent('step', step);
-              },
-              (delta) => {
-                sendEvent('delta', { delta });
-              },
-              body.model
-            );
+          const attemptedModels = new Set<string>();
+          let currentModel = body.model || process.env.GROQ_MODEL || AVAILABLE_MODEL_CHAIN[0];
 
-            sendEvent('message', response);
-            sendEvent('done', {});
-          } catch (agentError: any) {
-            context.warn('MAF Health Agent deliberation warning, evaluating fallback:', agentError);
+          while (true) {
+            attemptedModels.add(currentModel);
             try {
-              // Graceful fallback to groqService if MAF encountered an unexpected runtime issue
-              const fallbackResponse = await processChatConversation(
+              const response = await runHealthAgentStream(
                 body.messages!,
                 body.userProfile,
-                body.model
+                (step) => {
+                  sendEvent('step', step);
+                },
+                (delta) => {
+                  sendEvent('delta', { delta });
+                },
+                currentModel
               );
-              sendEvent('message', fallbackResponse);
+
+              sendEvent('message', { ...response, activeModel: currentModel });
               sendEvent('done', {});
-            } catch (fallbackError: any) {
-              sendEvent('error', {
-                error: agentError.message || fallbackError.message || 'Internal agent processing error.'
-              });
+              break;
+            } catch (agentError: any) {
+              const isLimit = isRateLimitError(agentError);
+              const nextModel = getNextModelId(currentModel);
+
+              if (isLimit && !attemptedModels.has(nextModel)) {
+                context.warn(`Rate limit reached on ${currentModel}. Auto-switching to ${nextModel}...`);
+                // Clear any partial streaming text from the failed model
+                sendEvent('delta_reset', {});
+                sendEvent('step', {
+                  id: `step_switch_${Date.now()}`,
+                  type: 'thought',
+                  title: `Rate limit reached on ${currentModel}. Auto-switching to ${nextModel}...`,
+                  thought: `Provider capacity limit reached. Resuming agent deliberation on ${nextModel} with full conversation context.`,
+                  timestamp: new Date().toISOString()
+                });
+                currentModel = nextModel;
+                continue;
+              }
+
+              context.warn('MAF Health Agent deliberation warning, evaluating fallback:', agentError);
+              try {
+                // Graceful fallback to groqService if MAF encountered an unexpected runtime issue
+                const fallbackResponse = await processChatConversation(
+                  body.messages!,
+                  body.userProfile,
+                  currentModel
+                );
+                sendEvent('message', { ...fallbackResponse, activeModel: currentModel });
+                sendEvent('done', {});
+                break;
+              } catch (fallbackError: any) {
+                sendEvent('error', {
+                  error: agentError.message || fallbackError.message || 'Internal agent processing error.',
+                  failedModel: currentModel
+                });
+                break;
+              }
             }
-          } finally {
-            try {
-              controller.close();
-            } catch (_) {}
           }
+
+          try {
+            controller.close();
+          } catch (_) {}
         }
       });
 
@@ -111,29 +144,54 @@ export async function chatHandler(
     }
 
     // Non-streaming JSON path for backward compatibility
-    try {
-      const steps: AgenticStep[] = [];
-      const response = await runHealthAgentStream(
-        body.messages,
-        body.userProfile,
-        (step) => steps.push(step),
-        undefined,
-        body.model
-      );
+    const attemptedModels = new Set<string>();
+    let currentModel = body.model || process.env.GROQ_MODEL || AVAILABLE_MODEL_CHAIN[0];
 
-      return {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...response, steps })
-      };
-    } catch (agentErr: any) {
-      context.warn('MAF Health Agent encountered error, falling back to groqService:', agentErr);
-      const fallbackResponse = await processChatConversation(body.messages, body.userProfile, body.model);
-      return {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fallbackResponse)
-      };
+    while (true) {
+      attemptedModels.add(currentModel);
+      try {
+        const steps: AgenticStep[] = [];
+        const response = await runHealthAgentStream(
+          body.messages,
+          body.userProfile,
+          (step) => steps.push(step),
+          undefined,
+          currentModel
+        );
+
+        return {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...response, steps, activeModel: currentModel })
+        };
+      } catch (agentErr: any) {
+        const isLimit = isRateLimitError(agentErr);
+        const nextModel = getNextModelId(currentModel);
+
+        if (isLimit && !attemptedModels.has(nextModel)) {
+          context.warn(`Rate limit reached on ${currentModel}. Auto-switching to ${nextModel}...`);
+          currentModel = nextModel;
+          continue;
+        }
+
+        context.warn('MAF Health Agent encountered error, falling back to groqService:', agentErr);
+        try {
+          const fallbackResponse = await processChatConversation(body.messages, body.userProfile, currentModel);
+          return {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...fallbackResponse, activeModel: currentModel })
+          };
+        } catch (fallbackErr: any) {
+          return {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              error: agentErr.message || fallbackErr.message || 'Internal agent processing error.'
+            })
+          };
+        }
+      }
     }
   } catch (error: any) {
     context.error('Health Agent chat endpoint error:', error);

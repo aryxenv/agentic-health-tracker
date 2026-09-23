@@ -100,6 +100,7 @@ export interface GroqChatResponse {
   needs_clarification: boolean;
   clarification_prompt: string | null;
   draft_entries: DraftEntry[];
+  activeModel?: string;
 }
 
 export interface ChatMessage {

@@ -30,6 +30,34 @@ if (!process.env.GROQ_API_KEY || !process.env.TAVILY_API_KEY) {
 
 const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 
+export const AVAILABLE_MODEL_CHAIN: readonly string[] = [
+  "openai/gpt-oss-20b",
+  "openai/gpt-oss-120b",
+  "qwen/qwen3.8-27b",
+];
+
+export function getNextModelId(currentModelId: string): string {
+  const currentIndex = AVAILABLE_MODEL_CHAIN.indexOf(currentModelId);
+  if (currentIndex === -1) return AVAILABLE_MODEL_CHAIN[0];
+  const nextIndex = (currentIndex + 1) % AVAILABLE_MODEL_CHAIN.length;
+  return AVAILABLE_MODEL_CHAIN[nextIndex];
+}
+
+export function isRateLimitError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || "").toLowerCase();
+  return (
+    err.status === 429 ||
+    err.statusCode === 429 ||
+    msg.includes("429") ||
+    msg.includes("rate limit") ||
+    msg.includes("tokens per day") ||
+    msg.includes("tpd") ||
+    msg.includes("tokens per minute") ||
+    msg.includes("otpm")
+  );
+}
+
 
 // 2024 Adult Compendium of Physical Activities MET Reference Table
 const MET_REFERENCE_TABLE: Record<
@@ -162,6 +190,11 @@ export function createHealthAgentSystem(
         throw new Error(`Open Food Facts returned HTTP ${response.status}`);
       }
 
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("json")) {
+        throw new Error(`Open Food Facts returned non-JSON response (${contentType})`);
+      }
+
       const data: any = await response.json();
       const product = data?.products?.[0];
 
@@ -195,21 +228,10 @@ export function createHealthAgentSystem(
           1000,
       );
 
-      let scale = 1.0;
-      const servingG = Number(product.serving_quantity) || 100;
-      if (unit === "g" || unit === "grams" || unit === "ml") {
-        scale = amount / 100;
-      } else if (
-        unit === "serving" ||
-        unit === "bottle" ||
-        unit === "can" ||
-        unit === "pot" ||
-        unit === "portion"
-      ) {
-        scale = (amount * servingG) / 100;
-      } else if (amount > 1 && amount <= 10) {
-        scale = (amount * servingG) / 100;
-      }
+      const servingQuantityG = Number(product.serving_quantity) || null;
+      const servingSize =
+        product.serving_size ||
+        (servingQuantityG ? `${servingQuantityG}g` : null);
 
       const result = {
         found: true,
@@ -220,14 +242,17 @@ export function createHealthAgentSystem(
           product.product_name_fr ||
           productName,
         brand: product.brands || "Brand",
-        servingInfo: `${amount} ${unit} (~${Math.round(servingG * (scale / (amount || 1)) * (amount || 1))}g/ml)`,
-        calories: Math.round(kcal100 * scale),
-        protein: Number((protein100 * scale).toFixed(1)),
-        carbs: Number((carbs100 * scale).toFixed(1)),
-        fat: Number((fat100 * scale).toFixed(1)),
-        fiber: Number((fiber100 * scale).toFixed(1)),
-        sugar: Number((sugar100 * scale).toFixed(1)),
-        sodiumMg: Math.round(sodiumMg100 * scale),
+        servingSize,
+        servingQuantityG,
+        per100g: {
+          calories: Math.round(kcal100),
+          protein: Number(protein100.toFixed(1)),
+          carbs: Number(carbs100.toFixed(1)),
+          fat: Number(fat100.toFixed(1)),
+          fiber: Number(fiber100.toFixed(1)),
+          sugar: Number(sugar100.toFixed(1)),
+          sodiumMg: sodiumMg100,
+        },
         source: "Open Food Facts (Belgium / Europe)",
       };
 
@@ -337,23 +362,23 @@ export function createHealthAgentSystem(
   const openFoodFactsTool = tool({
     name: "search_open_food_facts",
     description:
-      "Search the live Open Food Facts database specifically for packaged European and global supermarket products with barcodes or commercial brands (e.g. Albert Heijn, Delhaize, Colruyt, Carrefour, Lidl, Aldi, Melkunie, Alpro, Boni). Do NOT call this for generic, whole, unbranded, homemade, or regional foods (e.g. fruits, nuts, khakra, rotis, rice, plain eggs, curries, restaurant meals) - use internal knowledge or search_web instead.",
+      "Search the live Open Food Facts database for packaged European and global supermarket products with barcodes or commercial brands (e.g. Albert Heijn, Delhaize, Colruyt, Carrefour, Lidl, Aldi, Melkunie, Alpro, Boni, XXL Nutrition). Returns unscaled nutritional facts per 100g/ml and stated serving size. Do NOT pass compound dishes or multiple foods in one query—search each branded product individually.",
     parameters: {
       type: "object",
       properties: {
         productName: {
           type: "string",
           description:
-            "Name of the product or brand (e.g. 'Melkunie protein drink', 'Alpro soya', 'Delhaize skyr')",
+            "Name of the product or brand (e.g. 'Melkunie protein drink', 'XXL Nutrition Whey Delicious', 'Delhaize skyr')",
         },
         amount: {
           type: "number",
-          description: "Portion quantity or amount (e.g. 200, 1, 330)",
+          description: "Optional portion quantity or amount (e.g. 30, 250)",
         },
         unit: {
           type: "string",
           description:
-            "Portion unit (e.g. 'g', 'grams', 'ml', 'bottle', 'can', 'pot', 'serving')",
+            "Optional portion unit (e.g. 'g', 'ml', 'serving', 'scoop')",
         },
       },
       required: ["productName"],
@@ -1157,18 +1182,26 @@ export function createHealthAgentSystem(
       "Expert nutritionist subagent that retrieves verified online nutrition facts, Belgian/European supermarket products, and calculates portion-scaled macronutrients.",
     instructions: `You are the Nutrition Specialist subagent for Health Agent.
 Your duty:
-1. Deconstruct user food logs into specific food items, brands, and portion amounts.
-2. Standard Pantry Staples & Whole Foods (e.g., pistachios/nuts, eggs, olive oil, milk, rice, oats, chicken breast, bread, plain fruits, vegetables, seeds):
-   - Directly compute exact portion-scaled calories and macros using your comprehensive nutritional knowledge base (USDA/scientific food composition standards).
-   - Do NOT call external search tools for common pantry staples.
-3. Packaged Commercial Grocery Products (especially European/Belgian supermarket brands like Melkunie, Alpro, Delhaize, Albert Heijn, Colruyt/Boni, Carrefour, Lidl, Aldi):
-   - Call "search_open_food_facts" with the product name and portion.
+1. Food Decomposition Protocol:
+   - When a user food log contains multiple ingredients, a compound preparation, or a mixture (e.g., protein powder in milk/water, oatmeal with milk/honey, salad with dressing), decompose into each distinct item before computing or querying.
+   - Never query search tools with compound multi-item phrases (e.g. do not search "whey in milk"). Query or calculate each individual component separately.
+2. Standard Pantry Staples & Whole Foods (e.g., milk, oats, rice, chicken breast, eggs, olive oil, plain fruits, vegetables, nuts/seeds):
+   - Compute calories and macros from standard scientific/USDA food composition data per 100g/ml scaled to portion.
+   - For dairy liquid bases: standard whole milk per 100ml is ~64 kcal, 3.3g protein, 4.8g carbs (lactose), 3.6g fat, 4.8g sugar. Scale to requested volume (e.g. 300ml = ~192 kcal, 9.9g protein, 14.4g carbs, 10.8g fat, 14.4g sugar, 0g fiber).
+3. Packaged Commercial Grocery Products (e.g. XXL Nutrition, Melkunie, Alpro, Delhaize, Albert Heijn, Colruyt/Boni, Carrefour, Lidl, Aldi):
+   - Call "search_open_food_facts" with the individual product name.
+   - Tool returns raw unscaled facts per 100g/ml and stated serving size. Multiply per-100g values proportionally by (user portion in g or ml / 100).
    - If not found or if Open Food Facts fails, call "search_web" via Tavily.
 4. Restaurant Meals, Regional Dishes, Takeaway, or Unfamiliar Items (e.g. jeera khakra, Belgian dishes, curries, bakery items):
    - Call "search_web" via Tavily with ONE concise, comprehensive query (e.g. "<item name> nutrition calories protein carbs fat per piece/serving").
-   - NEVER make multiple micro-queries for individual nutrients (e.g. do not make a separate search just for sodium or fiber). Formulate a single query to retrieve all nutritional metrics at once.
-5. Accurately compute portion-scaled values: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
-6. Return a clear, concise structured breakdown for each food item.`,
+   - NEVER make multiple micro-queries for individual nutrients. Formulate a single query to retrieve all nutritional metrics at once.
+5. Informal Unit Translation & Portion Scaling:
+   - When portion is given in discrete or informal counts (e.g., "5 pieces of walnuts", "2 slices of bread", "1 scoop"):
+     * Make a best-effort realistic translation from the count to scientific metric weight (grams/ml) based on the food's typical density (e.g. 5 walnut pieces = ~12.5g to 20g, 1 scoop whey = ~30g).
+     * State the assumed gram weight explicitly in the breakdown and servingInfo (e.g. "5 pieces (~15g)").
+   - If portion is completely missing (e.g. just "had walnuts" or "ate pasta"), note that clarification is needed.
+6. Accurately compute portion-scaled values: calories, protein (g), carbs (g), fat (g), fiber (g), sugar (g), and sodium (mg).
+7. Return a clear, concise structured breakdown for each food item.`,
     tools: [
       openFoodFactsTool,
       webSearchTool,
@@ -1319,6 +1352,8 @@ export async function runHealthAgentStream(
 ): Promise<GroqChatResponse> {
   const { healthAgent, emit, agentRunState, sanitizeDraftEntries } =
     createHealthAgentSystem(userProfile, onStep, model);
+
+  const effectiveModel = model || GROQ_MODEL;
 
   // Extract latest user query and previous messages
   const userMessages = messages.filter((m) => m.role === "user");
@@ -1484,6 +1519,7 @@ CONTEXT INSTRUCTIONS:
         });
       }
 
+      result.activeModel = effectiveModel;
       return result;
     } catch (err: any) {
       // 1. Universal Early-Return: If telemetry draft entries were ALREADY successfully recorded
@@ -1503,6 +1539,7 @@ CONTEXT INSTRUCTIONS:
           result.reply =
             "I've drafted and recorded your telemetry based on your input.";
         }
+        result.activeModel = effectiveModel;
         return result;
       }
 

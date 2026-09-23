@@ -46,6 +46,7 @@ export interface ChatResponse {
   needs_clarification: boolean;
   clarification_prompt: string | null;
   draft_entries: DraftEntry[];
+  activeModel?: ModelId;
 }
 
 export type AgenticStepType = 'thought' | 'tool_call' | 'tool_result';

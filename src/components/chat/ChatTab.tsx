@@ -222,7 +222,15 @@ export const ChatTab: React.FC<ChatTabProps> = ({
         },
         controller.signal,
         modelToUse,
+        () => {
+          streamingTextRef.current = "";
+          setStreamingText("");
+        },
       );
+
+      if (res.activeModel && res.activeModel !== selectedModel) {
+        handleModelChange(res.activeModel);
+      }
 
       const agentMsgId = `agent_${Date.now()}`;
       const finalText = res.reply || streamingTextRef.current;
