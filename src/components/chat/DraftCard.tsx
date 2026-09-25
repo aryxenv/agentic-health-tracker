@@ -146,6 +146,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                     {isEditing ? (
                       <input
                         type="number"
+                        step="0.1"
                         value={entry.protein}
                         onChange={(e) =>
                           handleUpdateField(idx, 'protein', parseFloat(e.target.value) || 0)
@@ -153,7 +154,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                         className="w-full bg-transparent text-center text-[0.855rem] text-white border-none focus:outline-none"
                       />
                     ) : (
-                      <span className="font-medium text-white">{Math.round(entry.protein || 0)}g</span>
+                      <span className="font-medium text-white">{Number(entry.protein || 0).toFixed(1)}g</span>
                     )}
                   </div>
 
@@ -162,6 +163,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                     {isEditing ? (
                       <input
                         type="number"
+                        step="0.1"
                         value={entry.carbs}
                         onChange={(e) =>
                           handleUpdateField(idx, 'carbs', parseFloat(e.target.value) || 0)
@@ -169,7 +171,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                         className="w-full bg-transparent text-center text-[0.855rem] text-white border-none focus:outline-none"
                       />
                     ) : (
-                      <span className="font-medium text-white">{Math.round(entry.carbs || 0)}g</span>
+                      <span className="font-medium text-white">{Number(entry.carbs || 0).toFixed(1)}g</span>
                     )}
                   </div>
 
@@ -178,6 +180,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                     {isEditing ? (
                       <input
                         type="number"
+                        step="0.1"
                         value={entry.fat}
                         onChange={(e) =>
                           handleUpdateField(idx, 'fat', parseFloat(e.target.value) || 0)
@@ -185,7 +188,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                         className="w-full bg-transparent text-center text-[0.855rem] text-white border-none focus:outline-none"
                       />
                     ) : (
-                      <span className="font-medium text-white">{Math.round(entry.fat || 0)}g</span>
+                      <span className="font-medium text-white">{Number(entry.fat || 0).toFixed(1)}g</span>
                     )}
                   </div>
 
@@ -194,6 +197,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                     {isEditing ? (
                       <input
                         type="number"
+                        step="0.1"
                         value={entry.fiber}
                         onChange={(e) =>
                           handleUpdateField(idx, 'fiber', parseFloat(e.target.value) || 0)
@@ -201,7 +205,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                         className="w-full bg-transparent text-center text-[0.855rem] text-white border-none focus:outline-none"
                       />
                     ) : (
-                      <span className="font-medium text-white">{Math.round(entry.fiber || 0)}g</span>
+                      <span className="font-medium text-white">{Number(entry.fiber || 0).toFixed(1)}g</span>
                     )}
                   </div>
                 </div>
@@ -209,7 +213,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                 <div className="grid grid-cols-3 gap-2 text-center text-[0.855rem]">
                   <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
                     <span className="text-[0.76rem] text-white/50 block">Duration</span>
-                    <span className="font-medium text-white">{Math.round(entry.durationMin || 0)}m</span>
+                    <span className="font-medium text-white">{Number(entry.durationMin || 0).toFixed(1)}m</span>
                   </div>
                   <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
                     <span className="text-[0.76rem] text-white/50 block">Intensity</span>
@@ -217,7 +221,7 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                   </div>
                   <div className="border border-[rgba(255,255,255,0.2)] rounded-[5px] p-1.5">
                     <span className="text-[0.76rem] text-white/50 block">Compendium</span>
-                    <span className="font-medium text-white">{entry.metValue} MET</span>
+                    <span className="font-medium text-white">{Number(entry.metValue || 0).toFixed(1)} MET</span>
                   </div>
                 </div>
               )}
@@ -237,15 +241,15 @@ export const DraftCard: React.FC<DraftCardProps> = ({
                     <div className="mt-2 grid grid-cols-3 gap-2 p-2 rounded-[5px] border border-[rgba(255,255,255,0.15)] text-[0.855rem] text-white">
                       <div>
                         <span className="text-[0.76rem] text-white/50 block">Net Carbs</span>
-                        <span className="font-medium">{Math.round(netCarbs)}g</span>
+                        <span className="font-medium">{netCarbs.toFixed(1)}g</span>
                       </div>
                       <div>
                         <span className="text-[0.76rem] text-white/50 block">Sugar</span>
-                        <span className="font-medium">{Math.round(entry.sugar || 0)}g</span>
+                        <span className="font-medium">{Number(entry.sugar || 0).toFixed(1)}g</span>
                       </div>
                       <div>
                         <span className="text-[0.76rem] text-white/50 block">Sodium</span>
-                        <span className="font-medium">{Math.round(entry.sodiumMg || 0)}mg</span>
+                        <span className="font-medium">{Number(entry.sodiumMg || 0).toFixed(1)}mg</span>
                       </div>
                     </div>
                   )}
