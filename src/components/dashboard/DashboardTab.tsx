@@ -212,6 +212,14 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
     else setCurrentDate((d) => addDays(d, 30));
   };
 
+  const handleTimeFilterSelect = (filter: TimeFilter) => {
+    if (timeFilter === filter) {
+      setCurrentDate(new Date());
+    } else {
+      setTimeFilter(filter);
+    }
+  };
+
   const executeDelete = async (record: HealthLogRecord) => {
     setDeletingKey(record.rowKey);
     try {
@@ -283,7 +291,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           {(['day', 'week', 'month'] as const).map((filter) => (
             <button
               key={filter}
-              onClick={() => setTimeFilter(filter)}
+              onClick={() => handleTimeFilterSelect(filter)}
               className={`h-full px-2 sm:px-3.5 rounded-[3px] text-[0.76rem] uppercase tracking-wider transition-all duration-300 flex items-center justify-center leading-none ${
                 timeFilter === filter
                   ? 'border border-white text-white opacity-100 font-medium'
