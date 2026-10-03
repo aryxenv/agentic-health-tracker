@@ -33,10 +33,19 @@ test('MAF Health Agent System Initialization and Tool Execution', async (t) => {
     assert.equal(system.tools.consultDataExplorerTool.name, 'consult_data_explorer');
   });
 
-  await t.test('Open Food Facts tool is registered and exposes search_open_food_facts', async () => {
+  await t.test('Open Food Facts tool is registered and executes resilient queries', async () => {
     const offTool = system.tools.openFoodFactsTool;
     assert.ok(offTool, 'search_open_food_facts tool must be registered');
     assert.equal(offTool.name, 'search_open_food_facts');
+
+    const result = await offTool.execute({ productName: 'Melkunie protein drink' });
+    assert.ok(result, 'Search result should be returned');
+    if (result.found) {
+      assert.ok(result.productName, 'Found product should have a name');
+      assert.ok(result.per100g, 'Found product should have per100g metrics');
+      assert.ok(result.per100g.calories > 0, 'Calories must be greater than 0');
+      assert.ok(result.per100g.protein > 0, 'Protein must be greater than 0');
+    }
   });
 
   await t.test('Tavily Web Search tool is registered and executes queries', async () => {

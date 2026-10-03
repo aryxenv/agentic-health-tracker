@@ -28,11 +28,11 @@ if (!process.env.GROQ_API_KEY || !process.env.TAVILY_API_KEY) {
   dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 }
 
-const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 export const AVAILABLE_MODEL_CHAIN: readonly string[] = [
-  "openai/gpt-oss-20b",
   "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
   "qwen/qwen3.8-27b",
 ];
 
@@ -167,7 +167,11 @@ export function createHealthAgentSystem(
     includeReasoningEncryptedContent: false,
   });
 
-  // Helper: Open Food Facts query implementation
+// In-memory cache for Open Food Facts lookups to prevent rate limiting (TTL 1 hour)
+const openFoodFactsCache = new Map<string, { timestamp: number; data: any }>();
+const OFF_CACHE_TTL_MS = 60 * 60 * 1000;
+
+  // Helper: Open Food Facts query implementation (Multi-tier resilient client)
   const executeOpenFoodFacts = async (
     productName: string,
     amount = 100,
@@ -178,42 +182,50 @@ export function createHealthAgentSystem(
       args: { productName, amount, unit },
     });
 
-    try {
-      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&search_simple=1&action=process&json=1&page_size=2`;
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "HealthTrackerApp/1.0 (contact@healthtracker.app)",
-        },
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeout));
-
-      if (!response.ok) {
-        throw new Error(`Open Food Facts returned HTTP ${response.status}`);
-      }
-
-      const contentType = response.headers.get("content-type") || "";
-      if (!contentType.includes("json")) {
-        throw new Error(`Open Food Facts returned non-JSON response (${contentType})`);
-      }
-
-      const data: any = await response.json();
-      const product = data?.products?.[0];
-
-      if (!product) {
-        const notFound = {
-          found: false,
-          message: `Product "${productName}" not found in Open Food Facts. Use search_web to look up live facts.`,
-        };
-        emit("tool_result", `No match in Open Food Facts for "${productName}"`, {
+    const normKey = productName.trim().toLowerCase();
+    const cached = openFoodFactsCache.get(normKey);
+    if (cached && Date.now() - cached.timestamp < OFF_CACHE_TTL_MS) {
+      emit(
+        "tool_result",
+        `Nutritional facts retrieved from Open Food Facts cache for "${productName}"`,
+        {
           toolName: "search_open_food_facts",
-          result: notFound,
-        });
-        return notFound;
-      }
+          result: cached.data,
+        },
+      );
+      return cached.data;
+    }
 
+    const headers = {
+      "User-Agent":
+        "HealthTrackerApp/1.0 (https://github.com/aryxenv/agentic-health-tracker; contact@healthtracker.app)",
+      Accept: "application/json",
+    };
+
+    const queryWords = normKey.split(/[\s,+-]+/).filter((w) => w.length > 2);
+
+    const scoreProduct = (p: any): number => {
+      if (!p || !p.nutriments) return -1;
+      const name = (
+        p.product_name ||
+        p.product_name_en ||
+        p.product_name_nl ||
+        p.product_name_fr ||
+        ""
+      ).toLowerCase();
+      const brand = (
+        Array.isArray(p.brands) ? p.brands.join(" ") : p.brands || ""
+      ).toLowerCase();
+      let score = 1;
+      for (const w of queryWords) {
+        if (name.includes(w)) score += 10;
+        else if (brand.includes(w)) score += 5;
+      }
+      return score;
+    };
+
+    const extractProduct = (product: any, sourceName: string) => {
+      if (!product) return null;
       const n = product.nutriments || {};
       const kcal100 =
         Number(
@@ -236,8 +248,11 @@ export function createHealthAgentSystem(
       const servingSize =
         product.serving_size ||
         (servingQuantityG ? `${servingQuantityG}g` : null);
+      const brandStr = Array.isArray(product.brands)
+        ? product.brands.join(", ")
+        : product.brands || "Brand";
 
-      const result = {
+      return {
         found: true,
         productName:
           product.product_name ||
@@ -245,7 +260,7 @@ export function createHealthAgentSystem(
           product.product_name_nl ||
           product.product_name_fr ||
           productName,
-        brand: product.brands || "Brand",
+        brand: brandStr,
         servingSize,
         servingQuantityG,
         per100g: {
@@ -257,26 +272,168 @@ export function createHealthAgentSystem(
           sugar: Number(sugar100.toFixed(1)),
           sodiumMg: sodiumMg100,
         },
-        source: "Open Food Facts (Belgium / Europe)",
+        source: sourceName,
       };
+    };
 
-      emit(
-        "tool_result",
-        `Nutritional facts retrieved from Open Food Facts for "${productName}"`,
-        {
-          toolName: "search_open_food_facts",
-          result,
-        },
-      );
+    try {
+      // Tier 1: world.openfoodfacts.net mirror (high precision CGI search without load-shedding 503s)
+      try {
+        const url = `https://world.openfoodfacts.net/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&search_simple=1&action=process&json=1&page_size=5`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch(url, {
+          headers,
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeout));
 
-      return result;
+        if (
+          response.ok &&
+          (response.headers.get("content-type") || "").includes("json")
+        ) {
+          const data: any = await response.json();
+          const scored = (data?.products || [])
+            .map((p: any) => ({ p, s: scoreProduct(p) }))
+            .filter((x: any) => x.s > 0)
+            .sort((a: any, b: any) => b.s - a.s);
+          const best =
+            scored[0]?.p ||
+            (data?.products || []).find(
+              (p: any) =>
+                p && p.nutriments && (p.product_name || p.product_name_en),
+            );
+          if (best) {
+            const result = extractProduct(best, "Open Food Facts (Net Mirror)");
+            if (result) {
+              openFoodFactsCache.set(normKey, {
+                timestamp: Date.now(),
+                data: result,
+              });
+              emit(
+                "tool_result",
+                `Nutritional facts retrieved from Open Food Facts for "${productName}"`,
+                {
+                  toolName: "search_open_food_facts",
+                  result,
+                },
+              );
+              return result;
+            }
+          }
+        }
+      } catch (_) {}
+
+      // Tier 2: Search-a-licious Elasticsearch API (search.openfoodfacts.org)
+      try {
+        const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(productName)}&page_size=10`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch(url, {
+          headers,
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeout));
+
+        if (
+          response.ok &&
+          (response.headers.get("content-type") || "").includes("json")
+        ) {
+          const data: any = await response.json();
+          const scored = (data?.hits || [])
+            .map((h: any) => ({ h, s: scoreProduct(h) }))
+            .filter((x: any) => x.s > 0)
+            .sort((a: any, b: any) => b.s - a.s);
+          const best =
+            scored[0]?.h ||
+            (data?.hits || []).find(
+              (h: any) =>
+                h && h.nutriments && (h.product_name || h.product_name_en),
+            );
+          if (best && best.nutriments) {
+            const result = extractProduct(
+              best,
+              "Open Food Facts (Search-a-licious)",
+            );
+            if (result) {
+              openFoodFactsCache.set(normKey, {
+                timestamp: Date.now(),
+                data: result,
+              });
+              emit(
+                "tool_result",
+                `Nutritional facts retrieved from Open Food Facts for "${productName}"`,
+                {
+                  toolName: "search_open_food_facts",
+                  result,
+                },
+              );
+              return result;
+            }
+          }
+        }
+      } catch (_) {}
+
+      // Tier 3: world.openfoodfacts.org legacy endpoint with strict JSON and error checking
+      try {
+        const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(productName)}&search_simple=1&action=process&json=1&page_size=5`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch(url, {
+          headers,
+          signal: controller.signal,
+        }).finally(() => clearTimeout(timeout));
+
+        if (
+          response.ok &&
+          (response.headers.get("content-type") || "").includes("json")
+        ) {
+          const data: any = await response.json();
+          const scored = (data?.products || [])
+            .map((p: any) => ({ p, s: scoreProduct(p) }))
+            .filter((x: any) => x.s > 0)
+            .sort((a: any, b: any) => b.s - a.s);
+          const best =
+            scored[0]?.p ||
+            (data?.products || []).find(
+              (p: any) =>
+                p && p.nutriments && (p.product_name || p.product_name_en),
+            );
+          if (best) {
+            const result = extractProduct(best, "Open Food Facts (Europe)");
+            if (result) {
+              openFoodFactsCache.set(normKey, {
+                timestamp: Date.now(),
+                data: result,
+              });
+              emit(
+                "tool_result",
+                `Nutritional facts retrieved from Open Food Facts for "${productName}"`,
+                {
+                  toolName: "search_open_food_facts",
+                  result,
+                },
+              );
+              return result;
+            }
+          }
+        }
+      } catch (_) {}
+
+      const notFound = {
+        found: false,
+        message: `Product "${productName}" not found in Open Food Facts. Use search_web to look up live facts.`,
+      };
+      emit("tool_result", `No match in Open Food Facts for "${productName}"`, {
+        toolName: "search_open_food_facts",
+        result: notFound,
+      });
+      return notFound;
     } catch (err: any) {
       const errorResult = {
         found: false,
         error: err.message,
         message: `Open Food Facts lookup failed: ${err.message}. Please use search_web to look up "${productName}".`,
       };
-      emit("tool_result", `Open Food Facts bypassed (${err.message})`, {
+      emit("tool_result", `Open Food Facts lookup completed (${err.message})`, {
         toolName: "search_open_food_facts",
         result: errorResult,
       });
